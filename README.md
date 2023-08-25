@@ -9,4 +9,16 @@ This repo includes:
   3. descriptive figures
   4. interctive dashboard to navigate results
 
+## Dependencies
 
+The python application:
+
+| _Dependencies_            | version |
+| ------------------------- | ------- |
+| pandas                    | 2.0.3   |
+| numpy                     | 1.25.2  |
+| dash                      | 2.12.1  |
+| dash_bootstrap_components | 1.4.2   |
+| dash_cytoscape            | 0.3.0   |
+| plotly                    | 5.16.1  |
+| pyreadr                   | 0.4.9   |

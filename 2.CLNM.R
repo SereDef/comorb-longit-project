@@ -4,8 +4,7 @@ library(tidyr)
 library(psych)
 library(gdata)
 
-
-data <- readRDS('../Mats/raw_data.rds')
+data <- readRDS('../mats/raw_data.rds')
 
 which(sapply(data, is.character)) 
 
@@ -15,6 +14,66 @@ sel <- function(var, times=NULL){
   return(subs)
 }
 # sel(c(paste0('sDEP',0:2)), 23.8)
+
+# ==============================================================================
+# Cross-sectional network analysis (single timepoint)
+# ==============================================================================
+library(qgraph)
+
+time <- c('9.6y','9.8y')
+rm <- c('score','age','weight','mass','TMI') # remove total depression score and age at measurement # 'tot_chol','LDL'
+
+d <- data[,sel(time)]
+# cat(names(d), sep='\n')
+d = d[, -which(names(d)%in%sel(rm))]
+
+n_depitems <- sum(names(d)%in%sel('DEP'))
+message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
+
+cat(names(d), sep='\n')
+
+# Select cases with at least one ovbservation 
+d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
+
+# cor_auto detects ordinal variables (with up to 7 unique integer values) and uses
+# lavaan to estimate polychoric, polyserial and Pearson correlations.
+# PROBLEM: tot_chol_9.8y, LDL_chol_9.8y
+# mat <- qgraph::cor_auto(d)
+
+# Correlation matrix
+mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
+
+# Fit the network
+gra <- qgraph::qgraph(mat, 
+                      labels=names(d_obs),
+                      graph = 'glasso', # with EPIC model selection
+                      sampleSize = n_obs,
+                      layout = 'spring', # node placement
+                      tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
+                      lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
+) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
+
+
+# Weight matrix
+wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
+wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
+
+# Centrality indices
+ci <- centralityTable(gra)[,3:5]
+ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
+names(ci) = gsub('value.', '', names(ci))
+
+# Save output
+save(wm, ci, n_obs, file = paste0('../results/crosnet_',paste(time, collapse='-'),'.RData'))
+
+
+
+
+cp <- centralityPlot(gra) # centrality indices
+
+d = data[,sel('17.8y')]
+d = d[, -which(names(d)%in%sel(c('height','weight','tot_chol','score','age'), '17.8'))]
+
 # ==============================================================================
 library(mgm) # Estimating Time-Varying Mixed Graphical Models in High-Dimensional Data
 
@@ -45,6 +104,9 @@ qgraph::qgraph(fit_mgm$pairwise$wadj,
 # We inspect the weigthed adjacency matrix stored in fit_mgm$pairwise$wadj
 
 # ==============================================================================
+# Cross-sectional network analysis (single timepoint)
+# ==============================================================================
+
 library(qgraph)
 library(lavaan)
 
