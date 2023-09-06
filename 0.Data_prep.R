@@ -22,7 +22,7 @@ data <- data.frame('IDC' = paste(full$cidb2957, # mother ID
 f <- function(pref) { print(sort(names(full)[grep(pref, names(full))]))}
 
 # Extract and clean depression items
-extr <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
+extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
   # remove positively worded items (not in SMFQ)
   if (length(remove) > 0) { nrs = nrs[-remove] }
  
@@ -60,7 +60,8 @@ extr <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
   message('\nAge:'); print(summary(dep[,age_var]))
   
   # Histogram 
-  hist(dep[,score_var], main=paste(score_var,round(median(dep[,age_var], na.rm=T),1))); 
+  hist(dep[,score_var], main=paste(score_var,round(median(dep[,age_var], na.rm=T),1)), 
+       breaks=max(dep[,score_var], na.rm=T), xlim=c(0, 27)); 
   
   # Add age mark to variable 
   names(dep) <- paste0(names(dep),'_',round(median(dep[,age_var], na.rm=T),1),'y')
@@ -73,24 +74,50 @@ bmi_calc <- function(h, w, title='BMI', age=''){
   h = h/100 # transform to meters
   bmi <- w / h^2
   # print(summary(bmi))
-  hist(bmi, main=paste(title, age))
+  hist(bmi, main=paste(title, age), breaks=max(bmi, na.rm=T))
   return(bmi)
 }
 
+# Remove outliers
+rm_outliers <- function(var, cutoff = 5, verbose=TRUE) {
+  quants <- quantile(var, probs=c(.25, .75), na.rm=TRUE);
+  iqr <- quants[2]-quants[1]
+  too_high <- which(var > quants[2]+cutoff*iqr)
+  too_low  <- which(var < quants[1]-cutoff*iqr)
+  var[ c(too_high, too_low) ] <- NA
+  if (verbose){
+    # message(names(var))
+    cat(length(too_low)+length(too_high), ' outliers removed (', 
+        length(too_low), ' below and ', length(too_high), ' above the cutoff).\n', sep='')
+  }
+  return(var)
+}
+
 # Extract and clean cardio-metabolic items
-extr2 <- function(df, age){
+extr_cmr <- function(df, age){
   # identify variables 
   cmr <- as.data.frame(full[, names(df)])
   # rename them
   names(cmr) <- df
+  
+  # Remove outliers
+  except = which(names(cmr) %in% c('insulin','glucose','triglyc','CRP','IL_6','canabis'))
+  if (identical(except, integer(0))) { 
+    cmr <- as.data.frame(sapply(cmr, rm_outliers))
+  } else { cmr[,-except] = as.data.frame(sapply(cmr[,-except], rm_outliers)) }
+  
+  # cmr[, except] = as.data.frame(sapply(cmr[, except], rm_outliers, cutoff=10))
+  # browser()
+  
   # Add age variable (in months) and display its descriptives
   cmr[,'CMR_age']<- full[,age]/12
   # print(summary(cmr$CMR_age))
   
   # Compute BMI if all info is available
   if (length(grep('height|weight', names(cmr))) > 1) {
-    message('calculating BMI')
+    message('Calculating BMI')
     cmr[,'BMI'] <- bmi_calc(cmr$height, cmr$weight)
+    cmr[,'BMI'] <- rm_outliers(cmr[,'BMI'])
   }
   # Compute FMI if all info is available
   if (length(grep('height|total_fatmass', names(cmr))) > 1) {
@@ -98,6 +125,7 @@ extr2 <- function(df, age){
     new = c('FMI','TFI','LMI'); old = c('total_fatmass','trunk_fatmass','total_leanmass')
     for (i in 1:3) { cmr[,new[i]] <- bmi_calc(cmr[,'height'], cmr[,old[i]]/1000, 
         title=new[i], age=round(median(cmr$CMR_age,na.rm=T),1)) }
+    cmr[,new] <- rm_outliers(cmr[,new])
   }
   # Add age mark to variable 
   names(cmr) <- paste0(names(cmr),'_',round(median(cmr$CMR_age,na.rm=T),1),'y')
@@ -128,37 +156,45 @@ extr2 <- function(df, age){
 
 pdf('Histogr_data.pdf')
 # ------------------------------------------------------------------------------
-mdep_09.6y <- extr('ku6', 60:72, reporter='m', age = 'ku991a') # tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
+mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') # tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
 
-cmr_09.6y <- extr2(data.frame('pub203'='height'), # cm (parent-reported) # 'pub204'='weight'), # kg (parent-reported)
-                   age = 'pub295')
+cmr_09.6y <- extr_cmr(data.frame('pub203'='height'), # cm (parent-reported) # 'pub204'='weight'), # kg (parent-reported)
+                      age = 'pub295')
 
 # Combine two weight measure (from two DXA visits)
 full[,'f9_weight'] <- rowMeans(full[,c('f9dx010','f9ms057')], na.rm=T)
 # Calculate waist to hip ratio
 full[,'f9_whr'] <- full[,'f9ms018'] / full[,'f9ms020'] # Hip circumference (cm)
 
-cmr_09.8y <- extr2(data.frame('f9_weight'='weight', # kg (DXA)
-                                'f9ms018'='waist_circ', # cm
-                                 'f9_whr'='waist_hip_ratio', # cm
-                                'f9dx135'='total_fatmass', # grams (--> trasformed later)
-                                'f9dx136'='total_leanmass',# grams (--> trasformed later)
-                                'f9dx126'='trunk_fatmass', # grams (--> trasformed later)
-                                'chol_f9'='tot_chol', # mmol/l
-                                 'hdl_f9'='HDL_chol', # mmol/l
-                                 'ldl_f9'='LDL_chol', # mmol/l
-                             'insulin_f9'='insulin',  # mU/L
-                                'trig_f9'='triglyc',  # mmol/l,
-                                 'crp_f9'='CRP', # mg/L
-                                 'il6_f9'='IL_6'), # Interleukin 6 (pg/ml)
-                   age = 'f9003c') # f9006c REVISIT? 196 children came twice, mostly 1 month apart
+cmr_09.8y <- extr_cmr(data.frame('f9_weight'='weight', # kg (DXA)
+                                   'f9ms018'='waist_circ', # cm
+                                    'f9_whr'='waist_hip_ratio', # cm
+                                   'f9dx135'='total_fatmass', # grams (--> trasformed later)
+                                   'f9dx136'='total_leanmass',# grams (--> trasformed later)
+                                   'f9dx126'='trunk_fatmass', # grams (--> trasformed later)
+                                   'chol_f9'='tot_chol', # mmol/l
+                                    'hdl_f9'='HDL_chol', # mmol/l
+                                    'ldl_f9'='LDL_chol', # mmol/l
+                                'insulin_f9'='insulin',  # mU/L
+                                   'trig_f9'='triglyc',  # mmol/l,
+                                    'crp_f9'='CRP', # mg/L
+                                    'il6_f9'='IL_6'), # Interleukin 6 (pg/ml)
+                      age = 'f9003c') # f9006c REVISIT? 196 children came twice, mostly 1 month apart
 
 # Add BMI, FMI, TMI and LMI
 add = data.frame('BMI'='weight','FMI'='total_fatmass','TMI'='trunk_fatmass','LMI'='total_leanmass')
 for (v in names(add)) {
-  if (v=='BMI') {div=1} else {div=1000}
-  cmr_09.8y[,paste0(v,'_9.8y')] <- bmi_calc(cmr_09.6y[,'height_9.6y'], cmr_09.8y[,paste0(add[v],'_9.8y')]/div)
+  if (v=='BMI') {div=1} else {div=1000} # weight is already in kg but fat/lean mass is in grams
+  at='_9.8y'
+  # Index to height (m) squared
+  cmr_09.8y[,paste0(v,at)] <- bmi_calc(cmr_09.6y[,'height_9.6y'], cmr_09.8y[,paste0(add[v],at)]/div, title=v, age='~9.7')
+  # Remove outliers
+  cmr_09.8y[,paste0(v,at)] <- rm_outliers(cmr_09.8y[,paste0(v,at)], cutoff = 5)
 }
+# Correct insulin levels 
+cmr_09.8y[,'insulin_9.8y'] <- rm_outliers(cmr_09.8y[,'insulin_9.8y'], cutoff = 10)
+
+summary(cmr_09.8y)
 
 # EXTRA ------------------------------------------------------------------------
 # * Puberty
@@ -173,17 +209,17 @@ for (v in names(add)) {
 #   hb_f9 = haemoblobin; hba1c_f9 = hemoglobin A1c (HbA1c), amount of blood sugar (glucose) attached to hemoglobin.
 #   igf1_f9 = Insulin-like growth factor 1 (IGF-1)
 # ------------------------------------------------------------------------------
-dep_10.6y <- extr('fddp1', 10:25, remove=c(2,8,11), age = 'fd003c') # Depression score = fddp130 (prorated?)
+dep_10.6y <- extr_dep('fddp1', 10:25, remove=c(2,8,11), age = 'fd003c') # Depression score = fddp130 (prorated?)
 
-cmr_10.7y <- extr2(data.frame('pub303'='height',  # cm (parent-reported)
-                              'pub304'='weight'), # kg (parent-reported)
-                   age = 'pub397a')
+cmr_10.7y <- extr_cmr(data.frame('pub303'='height',  # cm (parent-reported)
+                                 'pub304'='weight'), # kg (parent-reported)
+                      age = 'pub397a')
 
-cmr_10.6y <- extr2(data.frame('fdms018'='waist_circ', # cm
-                              'fdar117'='SBP',  # Systolic blood pressure (mmHg)
-                              'fdar118'='DBP',  # Diastolic blood pressure (mmHg)
-                              'fdar114'='PWV'), # Pulse Wave Velocity (m/s) # radial - carotid!!
-                   age = 'fd003c')
+cmr_10.6y <- extr_cmr(data.frame('fdms018'='waist_circ', # cm
+                                 'fdar117'='SBP',  # Systolic blood pressure (mmHg)
+                                 'fdar118'='DBP',  # Diastolic blood pressure (mmHg)
+                                 'fdar114'='PWV'), # Pulse Wave Velocity (m/s) # radial - carotid!!
+                      age = 'fd003c')
 # EXTRA ------------------------------------------------------------------------
 # + alcohol (fdaa492-93) + diet (fddd2-4..)
 
@@ -196,19 +232,18 @@ cmr_10.6y <- extr2(data.frame('fdms018'='waist_circ', # cm
 #   FDAA483 = Freq Child smoked cigarettes - FDAA484 = No. cigarettes Child smoked per week
 
 # ------------------------------------------------------------------------------
-mdep_11.7y <- extr('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
+mdep_11.7y <- extr_dep('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
 
 # Calculate waist to hip ratio
-full$fems_whr <- full['fems018'] / full['fems020'] # Hip circumference (cm)
-
-cmr_11.7y <- extr2(data.frame( 'pub403'='height', # cm (parent-reported) # Note: age slightly different ('pub497a')
-                              'fedx016'='weight', # kg --> 'pub404'='weight', # kg (parent-reported)
-                              'fems018'='waist_circ', # cm 
-                             'fems_whr'='waist_hip_ratio', # cm 
-                              'fedx135'='total_fatmass', # grams (--> trasformed later)
-                              'fedx136'='total_leanmass',# grams (--> trasformed later)
-                              'fedx126'='trunk_fatmass'),# grams (--> trasformed later)
-                   age = 'fe003c')
+full$fems_whr <- full[,'fems018'] / full[,'fems020'] # Hip circumference (cm)
+cmr_11.7y <- extr_cmr(data.frame( 'pub403'='height', # cm (parent-reported) # Note: age slightly different ('pub497a')
+                                 'fedx016'='weight', # kg --> 'pub404'='weight', # kg (parent-reported)
+                                 'fems018'='waist_circ', # cm 
+                                'fems_whr'='waist_hip_ratio', # cm 
+                                 'fedx135'='total_fatmass', # grams (--> trasformed later)
+                                 'fedx136'='total_leanmass',# grams (--> trasformed later)
+                                 'fedx126'='trunk_fatmass'),# grams (--> trasformed later)
+                       age = 'fe003c')
 
 # MISSING 
 #   fems010 = Height (cm)
@@ -216,35 +251,35 @@ cmr_11.7y <- extr2(data.frame( 'pub403'='height', # cm (parent-reported) # Note:
 #   fems028a = Fat percentage, impedance
 
 # ------------------------------------------------------------------------------
-dep_12.8y <- extr('ff65', 0:15, remove=c(2,8,11), age = 'ff0011a') # (+ date attendance b)
+dep_12.8y <- extr_dep('ff65', 0:15, remove=c(2,8,11), age = 'ff0011a') # (+ date attendance b)
 
-cmr_12.8y <- extr2(data.frame('ff2000'='height', # cm
-                              'ff2030'='weight', # kg
-                              'ff2020'='waist_circ'), # cm
-                     age = 'ff0011a')
+cmr_12.8y <- extr_cmr(data.frame('ff2000'='height', # cm
+                                 'ff2030'='weight', # kg
+                                 'ff2020'='waist_circ'), # cm
+                      age = 'ff0011a')
 # MISSING 
 # ff2036 = Fat percentage (%)
 # ff2620-27 = BP and pulse measures
 # ------------------------------------------------------------------------------
-mdep_13.1y <- extr('ta50', 20:32, reporter='m', age = 'ta9991a') 
+mdep_13.1y <- extr_dep('ta50', 20:32, reporter='m', age = 'ta9991a') 
 # + SDQ scores ta7025a - f 
 # + Teenager upset or distressed about weight/body shape (ta6160)
 
-cmr_13.1y <- extr2(data.frame('pub503'='height',  # cm (parent-reported)
-                              'pub504'='weight'), # kg (parent-reported)
-                     age = 'pub597a')
+cmr_13.1y <- extr_cmr(data.frame('pub503'='height',  # cm (parent-reported)
+                                 'pub504'='weight'), # kg (parent-reported)
+                      age = 'pub597a')
 
 # ------------------------------------------------------------------------------
-dep_13.8y <- extr('fg72', 10:25, remove=c(2,8,11), age = 'fg0011a')
+dep_13.8y <- extr_dep('fg72', 10:25, remove=c(2,8,11), age = 'fg0011a')
 
-cmr_13.8y <- extr2(data.frame('fg3100'='height',    # cm
-                              'fg3207'='weight',# kg (DXA)
-                              'fg3254'='total_fatmass',  # grams (--> trasformed later)
-                              'fg3255'='total_leanmass', # grams (--> trasformed later)
-                              'fg3245'='trunk_fatmass',  # grams (--> trasformed later)
-                              'fg3257'='android_fatmass',# grams (--> trasformed later)
-                              'fg1020'='heart_rate'), # at rest (BPM)
-                   age = 'fg0011a')
+cmr_13.8y <- extr_cmr(data.frame('fg3100'='height',    # cm
+                                 'fg3207'='weight',# kg (DXA)
+                                 'fg3254'='total_fatmass',  # grams (--> trasformed later)
+                                 'fg3255'='total_leanmass', # grams (--> trasformed later)
+                                 'fg3245'='trunk_fatmass',  # grams (--> trasformed later)
+                                 'fg3257'='android_fatmass',# grams (--> trasformed later)
+                                 'fg1020'='heart_rate'), # at rest (BPM)
+                      age = 'fg0011a')
 # (+ fg4822-24,29: smoked cigarettes)
 # (+ fg4873,77-80, fg4915,17,19: drinking)
 # (+ fg5422-23,26,28-29 cannabis )
@@ -269,7 +304,7 @@ cmr_13.8y <- extr2(data.frame('fg3100'='height',    # cm
 # 84 = any disorder present (any informant), 85 = externalising disorder present, 86 = ADHD, 88 = ODD or CD, 89 = ODD, 90 = CD,
 # 91 = any emotional disorder, 92 = depressive, 93 = anxiety, 97 = PTSD
 
-cmr_15.4y <- extr2(data.frame('fh3000'='height', # cm
+cmr_15.4y <- extr_cmr(data.frame('fh3000'='height', # cm
                               'fh3010'='weight', # kg
                             # 'fh2209'='weight_dxa', # more missing values
                               'fh4020'='waist_circ', # cm [fh4021 = code]
@@ -277,7 +312,7 @@ cmr_15.4y <- extr2(data.frame('fh3000'='height', # cm
                               'fh2255'='total_leanmass', # grams (--> trasformed later)
                               'fh2245'='trunk_fatmass',  # grams (--> trasformed later)
                               'fh2257'='android_fatmass',# grams (--> trasformed later)
-                              'fh2006'='heart_rate', # maximum
+                           #  'fh2006'='heart_rate', # maximum # only 4 values: 203,204,205,206
                             'chol_tf3'='tot_chol', # mmol/l
                              'hdl_tf3'='HDL_chol', # mmol/l
                              'ldl_tf3'='LDL_chol', # mmol/l
@@ -304,7 +339,7 @@ cmr_15.4y <- extr2(data.frame('fh3000'='height', # cm
 # fh2030-37 = BP and pulse measures
 
 # ------------------------------------------------------------------------------
-dep_16.6y <- extr('ccs45', 0:15, remove=c(2,8,11), age = 'ccs9991a')
+dep_16.6y <- extr_dep('ccs45', 0:15, remove=c(2,8,11), age = 'ccs9991a')
 # (ccs2000-2221) life events 
 # (ccs3500,10, 40-49 alcohol)
 # (ccs4000,05,10,30,35,40 smoking)
@@ -316,17 +351,17 @@ dep_16.6y <- extr('ccs45', 0:15, remove=c(2,8,11), age = 'ccs9991a')
 # DEPRESSION SYMPTMONS ccs2660-76 maybe in psychosis quest
 # eating disorders (ccs5500-5600)
 
-mdep_16.7y <- extr('tc40',30:42, reporter='m', age = 'tc9991a') #, + SDQ scores tc4025a - f 
+mdep_16.7y <- extr_dep('tc40',30:42, reporter='m', age = 'tc9991a') #, + SDQ scores tc4025a - f 
 
-cmr_16.0y <- extr2(data.frame('pub803'='height',  # cm (parent-reported)
-                              'pub804'='weight'), # kg (parent-reported)
-                   age = 'pub897a')
-cmr_17.0y <- extr2(data.frame('pub903'='height',  # cm (parent-reported)
-                              'pub904'='weight'), # kg (parent-reported)
-                   age = 'pub997a')
+cmr_16.0y <- extr_cmr(data.frame('pub803'='height',  # cm (parent-reported)
+                                 'pub804'='weight'), # kg (parent-reported)
+                      age = 'pub897a')
+cmr_17.0y <- extr_cmr(data.frame('pub903'='height',  # cm (parent-reported)
+                                 'pub904'='weight'), # kg (parent-reported)
+                      age = 'pub997a')
 
 # ------------------------------------------------------------------------------
-dep_17.8y <- extr('ccxd9', 0:15, remove=c(2,8,11), age = 'ccxd006') # (05 in years), CCXD917 total score
+dep_17.8y <- extr_dep('ccxd9', 0:15, remove=c(2,8,11), age = 'ccxd006') # (05 in years), CCXD917 total score
 
 # Combine some three BP measurements
 full$fjel_sbp <- rowMeans(full[,c('fjel036','fjel040')], na.rm=T) # excluding first measurement 'fjel032'
@@ -338,30 +373,30 @@ full$fjel_dbp <- rowMeans(full[,c('fjel037','fjel041')], na.rm=T) # excluding fi
 # IVSd – Interventricular septal end-diastole, given in centimeters (cm);
 # PWd – Posterior wall thickness at end-diastole, given in centimeters (cm); and
 # 1.04 – Heart muscle density in g/cm³.
-full$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(full[c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
+full$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(full[,c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
                                                 'fjgr031',  # Average interventricular septum in diastole (cm)
                                                 'fjgr053')] # Average posterior wall thickness in diastole (cm)
-                                     )^3 - full['fjgr043']^3 ) ) + 0.6
+                                     )^3 - full[,'fjgr043']^3 ) ) + 0.6
 
 # Relative wall thickness (RWT), defined as 2 times posterior wall thickness divided by the LV diastolic diameter
-full$fjgr_RWT <- 2 * full['fjgr053'] / full['fjgr043']
+full$fjgr_RWT <- 2 * full[,'fjgr053'] / full[,'fjgr043']
 # Ejection fraction (%) is estimated by fractional shortening (%), calculated using Teichholz's formula:
 # FS = (LV end-diastolic dimension – LV end-systolic dimension) / LV end-diastolic dimension
 # fjgr047 = Average left ventricular internal diameter during systole (cm)
-full$fjgr_FS <- (full['fjgr043'] - full['fjgr047']) / full['fjgr043'] * 100
+full$fjgr_FS <- (full[,'fjgr043'] - full[,'fjgr047']) / full[,'fjgr043'] * 100
 
 # cigarette smoking 
-full$fjsm_tot <- full['fjsm500'] # weekly number of cigarettes 
-full$fjsm_tot[is.na(full$fjsm_tot) & (full['fjsm350']==2 & full['fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
+full$fjsm_tot <- full[,'fjsm500'] # weekly number of cigarettes 
+full$fjsm_tot[is.na(full$fjsm_tot) & (full[,'fjsm350']==2 & full[,'fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
 full$fjsm_tot[is.na(full$fjsm_tot)] <- full[is.na(full$fjsm_tot), 'fjsm400']*7 # daily cigarettes present but weekly NA
 
-cmr_17.8y <- extr2(data.frame('fjmr020'='height', # cm
+cmr_17.8y <- extr_cmr(data.frame('fjmr020'='height', # cm
                               'fjmr022'='weight', # kg
                               'fjdx135'='total_fatmass',  # grams (--> transformed later)
                               'fjdx136'='total_leanmass', # grams (--> transformed later)
                               'fjdx126'='trunk_fatmass',  # grams (--> transformed later)
                               'fjdx138'='android_fatmass',# grams (--> transformed later)
-                              'fjli100'='liver_fat',
+                            # 'fjli100'='liver_fat', # only binary (0,1) with 43 cases
                                        # arteries
                              'fjel_sbp'='SBP', # Omron BP (seated after 5min rest)
                              'fjel_dbp'='DBP', # Omron BP (seated after 5min rest)
@@ -428,17 +463,17 @@ cmr_17.8y <- extr2(data.frame('fjmr020'='height', # cm
 # (Baseline and peak vessel diameter, arterial distensibility)
 
 # ------------------------------------------------------------------------------
-dep_18.7y <- extr('cct27',  0:12, age = 'cct9991a') # (c in years), cct2715 = total score
+dep_18.7y <- extr_dep('cct27',  0:12, age = 'cct9991a') # (c in years), cct2715 = total score
 # cct4105 exercise frequency 
 # (cct5000,01,05,10-15 smoking)
 # (cct5020,25,30-39 drinking)
 # (cct5050-52, 55,56,71 canabis) and other drugs...
 # MISSING eating disorders (cct41..)
 # ------------------------------------------------------------------------------
-dep_21.9y <- extr('ypa2', 0:12, age = 'ypa9020', plus=0)
+dep_21.9y <- extr_dep('ypa2', 0:12, age = 'ypa9020', plus=0)
 # ypa1018 if they had a child
 # ------------------------------------------------------------------------------
-dep_22.9y <- extr('ypb5',  0:17, remove=c(3,8,12,15,17), age = 'ypb9992', plus=0) # YPB5180 total score 
+dep_22.9y <- extr_dep('ypb5',  0:17, remove=c(3,8,12,15,17), age = 'ypb9992', plus=0) # YPB5180 total score 
 
 # ypb1213_imputeno = Ever been diagnosed with hypertension (high blood pressure) - Silent no's included
 # ypb1214 = Ever been diagnosed with heart attack/myocardial infarction
@@ -451,7 +486,7 @@ dep_22.9y <- extr('ypb5',  0:17, remove=c(3,8,12,15,17), age = 'ypb9992', plus=0
 # ypb8000-... childhood trauma 
 # missing(# smoking and alcohol cannabis)
 # ------------------------------------------------------------------------------
-dep_23.8y <- extr('ypc16', 50:67, remove=c(3,8,12,15,17), age = 'ypc2650')
+dep_23.8y <- extr_dep('ypc16', 50:67, remove=c(3,8,12,15,17), age = 'ypc2650')
 
 # ypc0593 = Respondent is always optimistic about their future 
 # ypc1828 = Respondent has ever witnessed a sudden, violent death (eg murder, suicide, or aftermath of an accident)
@@ -470,14 +505,14 @@ full$fkms_waistcirc <- full[,'fkms1052']/10
 full$fkms_whr <- full[,'fkms_waistcirc'] / (full[,'fkms1062']/10) # Hip circumference (trans in cm)
 
 # Calculate cardiac measurements (see formulas above)
-full$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(full[c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
+full$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(full[,c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
                                                 'fkec5050',  # Average thinkness LV interventricular septum in diastole (cm)
                                                 'fkec5180')] # Average LV posterior wall Diastolic thickness (cm)
-                                         )^3 - full['fjgr043']^3 ) ) + 0.6
-full$fkec_RWT <- 2 * full['fkec5180'] / full['fkec5080']
-full$fkec_FS <- abs( (full['fkec5080'] - full['fkec5090']) / full['fkec5080'] * 100 ) 
+                                         )^3 - full[,'fjgr043']^3 ) ) + 0.6
+full$fkec_RWT <- 2 * full[,'fkec5180'] / full[,'fkec5080']
+full$fkec_FS <- abs( (full[,'fkec5080'] - full[,'fkec5090']) / full[,'fkec5080'] * 100 ) 
 
-cmr_24.5y <- extr2(data.frame('fkms_height'='height', # cm
+cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
                                  'fkms1030'='weight',    # kg
                            'fkms_waistcirc'='waist_circ',# cm
                               'fkms_whr'='waist_hip_ratio',  # cm
@@ -608,8 +643,8 @@ for (var in colnames(data)) {
 
 # save and run -----------------------------------------------------------------
 
-crm <- cor(data[,-c(1,2)], use='pairwise.complete.obs')
-vcm <- cov(data[,-c(1,2)], use='pairwise.complete.obs')
+crm <- cor(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
+vcm <- cov(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
 
 saveRDS(data, 'raw_data.rds'); write.csv(data,'raw_data.csv')
 
@@ -617,5 +652,3 @@ write.csv(vcm, 'varcov_matrix.csv')
 write.csv(crm, 'corr_matrix.csv')
 
 dev.off()
-
-names(data)

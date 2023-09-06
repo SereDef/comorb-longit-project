@@ -18,129 +18,119 @@ sel <- function(var, times=NULL){
 # ==============================================================================
 # Cross-sectional network analysis (single timepoint)
 # ==============================================================================
+
 library(qgraph)
 
-time <- c('9.6y','9.8y')
-rm <- c('score','age','weight','mass','TMI') # remove total depression score and age at measurement # 'tot_chol','LDL'
+run_net <- function(times, mean_times='',
+                    remove = c('score','age','weight','total_fatmass','total_leanmass',
+                               'trunk_fatmass','TMI'), 
+                    verbose = TRUE) { 
+  # Subset columns 
+  d <- data[,sel(times)]
+  d = d[, -which( names(d) %in% sel(remove) )] # e.g., remove total depression score and age at measurement
+  
+  # Select cases with at least one observation 
+  d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
+  
+  if (verbose) { 
+    n_depitems <- sum(names(d) %in% sel('DEP'))
+    message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
+    cat(n_obs, 'observations.\n') 
+    cat(names(d), sep='\n') }
+  
+  # Correlation matrix
+  mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
+  
+  message('Fitting network...')
+  
+  # Fit the network
+  gra <- qgraph::qgraph(mat, 
+                        labels=names(d_obs),
+                        graph = 'glasso', # with EPIC model selection
+                        sampleSize = n_obs,
+                        layout = 'spring', # node placement
+                        tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
+                        lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
+  ) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
+  
+  # Weight matrix
+  wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
+  wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
+  
+  # Centrality indices
+  ci <- centralityTable(gra)[,3:5]
+  ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
+  names(ci) = gsub('value.', '', names(ci))
+  
+  # Save output
+  if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
+  save(wm, ci, n_obs, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
+  
+  return(gra)
+}
 
-d <- data[,sel(time)]
-# cat(names(d), sep='\n')
-d = d[, -which(names(d)%in%sel(rm))]
+cn9.7 <- run_net(times = c('9.6y','9.8y'))
+cn10.65 <- run_net(times = c('10.6y','10.7y'))
+cn11.75 <- run_net(times = c('11.7y','11.8y'))
 
-n_depitems <- sum(names(d)%in%sel('DEP'))
-message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
+cn12.8 <- run_net(times = c('12.8y'))
+cn13.1 <- run_net(times = c('13.1y'))
+cn13.8 <- run_net(times = c('13.8y'))
+cn15.4 <- run_net(times = c('15.4y')) # note: CMR only 
 
-cat(names(d), sep='\n')
+cn16.6 <- run_net(times = c('16.6y','17y'))
+cn16.7 <- run_net(times = c('16.7y','17y'))
 
-# Select cases with at least one ovbservation 
-d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
+cn17.8 <- run_net(times = c('17.8y')) # note: also lifestyle 
+
+cn18.7 <- run_net(times = c('18.7y')) # note: depression only 
+cn21.9 <- run_net(times = c('21.9y')) # note: depression only 
+cn22.9 <- run_net(times = c('22.9y')) # note: depression only 
+
+cn24.1 <- run_net(times = c('23.8y','24.5y'))
 
 # cor_auto detects ordinal variables (with up to 7 unique integer values) and uses
 # lavaan to estimate polychoric, polyserial and Pearson correlations.
 # PROBLEM: tot_chol_9.8y, LDL_chol_9.8y
 # mat <- qgraph::cor_auto(d)
 
-# Correlation matrix
-mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
-
-# Fit the network
-gra <- qgraph::qgraph(mat, 
-                      labels=names(d_obs),
-                      graph = 'glasso', # with EPIC model selection
-                      sampleSize = n_obs,
-                      layout = 'spring', # node placement
-                      tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
-                      lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
-) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
-
-
-# Weight matrix
-wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
-wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
-
-# Centrality indices
-ci <- centralityTable(gra)[,3:5]
-ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
-names(ci) = gsub('value.', '', names(ci))
-
-# Save output
-save(wm, ci, n_obs, file = paste0('../results/crosnet_',paste(time, collapse='-'),'.RData'))
-
-
-
-
-cp <- centralityPlot(gra) # centrality indices
-
-d = data[,sel('17.8y')]
-d = d[, -which(names(d)%in%sel(c('height','weight','tot_chol','score','age'), '17.8'))]
+# cp <- centralityPlot(gra) # centrality indices
 
 # ==============================================================================
-library(mgm) # Estimating Time-Varying Mixed Graphical Models in High-Dimensional Data
-
-d <- data[,sel(c('9.6y','9.8y'))]
-d = d[, -which(names(d)%in%sel(c('score','age')))]
-
-dc <- d[complete.cases(d), ] # doesnt take missign values 
-
-vtype <- c(rep('c',13), rep('g',18))
-vlevl <- c(rep( 3, 13), rep( 1 ,18))
-
-set.seed(1)
-fit_mgm <- mgm::mgm(data = dc,
-                   type = vtype,
-                   levels = vlevl,
-                   k = 2,
-                   lambdaSel = "CV")
-
-qgraph::qgraph(fit_mgm$pairwise$wadj,
-       edge.color = fit_mgm$pairwise$edgecolor,
-       layout = 'spring',
-       nodeNames = names(d),
-       legend = TRUE)
+# library(mgm) # Estimating Time-Varying Mixed Graphical Models in High-Dimensional Data
+# 
+# d <- data[,sel(c('9.6y','9.8y'))]
+# d = d[, -which(names(d)%in%sel(c('score','age')))]
+# 
+# dc <- d[complete.cases(d), ] # doesnt take missign values 
+# 
+# vtype <- c(rep('c',13), rep('g',18))
+# vlevl <- c(rep( 3, 13), rep( 1 ,18))
+# 
+# set.seed(1)
+# fit_mgm <- mgm::mgm(data = dc,
+#                    type = vtype,
+#                    levels = vlevl,
+#                    k = 2,
+#                    lambdaSel = "CV")
+# 
+# qgraph::qgraph(fit_mgm$pairwise$wadj,
+#        edge.color = fit_mgm$pairwise$edgecolor,
+#        layout = 'spring',
+#        nodeNames = names(d),
+#        legend = TRUE)
 # fit_mgm$pairwise # = weighted adjacency matrix and the signs (if defined) of the parameters
 # fit_mgm$interactions # list of all recovered interactions (cliques) and a list of parameters associated with all cliques; 
 # fit_mgm$intercepts # all estimated thresholds/intercepts
 # fit_mgm$nodemodels # list with the p glmnet objects from which all above results are computed. 
 # We inspect the weigthed adjacency matrix stored in fit_mgm$pairwise$wadj
 
-# ==============================================================================
-# Cross-sectional network analysis (single timepoint)
-# ==============================================================================
-
-library(qgraph)
-library(lavaan)
-
-d <- data[,sel(c('9.6y','9.8y'))]
-d = d[, -which(names(d)%in%sel(c('score','age')))]
-
-# cor_auto detects ordinal variables (with up to 7 unique integer values) and uses
-# lavaan to estimate polychoric, polyserial and Pearson correlations.
-mat <- qgraph::cor_auto(data[,sel('DEP')], 
-                        forcePD=T # search for nearest positive-definite correlation matrix
-                        # note: this can lead to unstable results
-                        )
-
-gra <- qgraph::qgraph(mat, 
-                      graph = 'glasso', # with EPIC model selection
-                      sampleSize = nrow(data),
-                      layout = 'spring', # node placement
-                      tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
-                      lambda.min.ratio = 0.05 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
-                      )
-# For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
-getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
-
-centralityPlot(gra) # centrality indices
-
-d = data[,sel('17.8y')]
-d = d[, -which(names(d)%in%sel(c('height','weight','tot_chol','score','age'), '17.8'))]
-
 # =====================
 
-library(bootnet)
+# library(bootnet)
 
-res = estimateNetwork(d, default = 'EBICglasso', threshold=T)
-plot(res, cut=0, theme='colorblind', layout='spring', labels=names)
+# res = estimateNetwork(d, default = 'EBICglasso', threshold=T)
+# plot(res, cut=0, theme='colorblind', layout='spring', labels=names)
 
 names = c('felt\nmiserable\nor unhappy', 
           'had\nfun',
@@ -511,13 +501,6 @@ samp = m_totfat[rowSums(is.na(m_totfat)) != ncol(m_totfat), ]
 
 # ==============================================================================
 # ==============================================================================
-sel <- function(var, times=NULL, d=data){
-  subs = names(d)[grep(paste(var, collapse='|'), names(d))]
-  if (!is.null(times)) { subs = subs[grep(paste(paste0('_',times), collapse='|'), subs)] }
-  return(subs)
-}
-
-library(bootnet)
 
 names = data.frame('DEP01'='felt\nmiserable\nor unhappy', 
                    'DEP02'='had fun', # only few
@@ -567,36 +550,3 @@ names = data.frame('DEP01'='felt\nmiserable\nor unhappy',
                    'triglyc'='triglycerides', 
                    'CRP'='CRP',
                    'IL_6'='IL-6')
-
-subdata = data[, sel('_9.')]
-names(subdata)
-# rm agez, total scores, height and weight
-subdata = subdata[, sel(names(names), d=subdata)]
-names(subdata)
-
-labels = list()
-for (v in names(subdata)) { 
-  print(v)
-  for (sv in names(names)) {
-    print(sv)
-    if (grep(sv, v)==T) { print( c(v, sv)) 
-      break() }
-  }
-}
-unlist(lapply(names(names), function(x) grep(x, names(subdata))))
-labels
-# subdata = data[, sel('_9.')]
-# subdata = data[, sel('_10.')]
-# subdata = data[, sel('_11.')]
-
-subdata = subdata[complete.cases(subdata),]
-
-res = bootnet::estimateNetwork(subdata, default = 'EBICglasso', threshold=T)
-
-plot(res, cut=0, labels=labels, theme='colorblind', layout='spring')
-
-library("qgraph")
-
-centralityPlot(res, orderBy='Strength')
-
-
