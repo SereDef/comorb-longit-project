@@ -1,4 +1,5 @@
 library(psychonetrics)
+library(qgraph)
 library(dplyr)
 library(tidyr)
 library(psych)
@@ -6,8 +7,8 @@ library(gdata)
 
 data <- readRDS('../mats/raw_data.rds')
 
-which(sapply(data, is.character)) 
-
+# which(sapply(data, is.character)) 
+# Select variables from dataframe
 sel <- function(var, times=NULL){
   subs = names(data)[grep(paste(var, collapse='|'), names(data))]
   if (!is.null(times)) { subs = subs[grep(paste(paste0('_',times), collapse='|'), subs)] }
@@ -16,14 +17,280 @@ sel <- function(var, times=NULL){
 # sel(c(paste0('sDEP',0:2)), 23.8)
 
 # ==============================================================================
-# Cross-sectional network analysis (single timepoint)
+# ========================= CROSS-LAG NETWORK MODEL ============================
+# ==============================================================================
+
+# Helper -----------------------------------------------------------------------
+# Select subset of timepoints
+sub <- data[, sel(c('9.8y','10.6y','10.7y','11.8y', # T1
+                    '17.8y','15.4y',                # T2
+                    '23.8y','24.5y'))]              # T3
+# Quickly check the available timepoints and counts per variable 
+check <- function(var) {
+  message(var, '\nCOUNT:')
+  print(sapply(sub[,grep(var, names(sub))], function(x) sum(!is.na(x)) ))
+  message('SUMMARY')
+  print(summary(sub[,grep(var, names(sub))]))
+}
+
+# Order alphabetically (i.e. per variable, per timepoint)
+# sort(gsub('_9.8', '_09.8', colnames(sub)))
+# check('waist_circ')
+
+# Initiate dataframe -----------------------------------------------------------
+df = data.frame('sex' = data$sex)
+
+add <- function(vars, times, output=df) {
+  # Convert times to string and add "y"
+  times <- paste0(as.character(times), 'y')
+  # Get vercor of names in oder 
+  get_names <- unlist(lapply(vars, function(x) paste(x, times, sep='_')))
+  # append to output dataframe 
+  output[, get_names] <- data[,get_names]
+  return(output)
+}
+
+# Add depression scores 
+df = add(paste0('sDEP', sprintf('%02d', 1:13) ), 
+         c(10.6, 17.8, 23.8))
+# Add cardio-metabolic variables 
+df = add(c('BMI','FMI','LMI'), 
+         c(11.8, 17.8, 24.5)) # excluding: 9.8, (10.7) and 15.4
+df = add(c('waist_circ'), 
+         c( 9.8, 15.4, 24.5)) # excluding 10.6 and 11.8
+df = add(c('DBP','SBP','PWV'), 
+         c(10.6, 17.8, 24.5)) # excluding: 9.8, 10.7 and 15.4
+df = add(c('HDL_chol','LDL_chol', 'insulin', 'triglyc','CRP'), # 'tot_chol'
+         c( 9.8, 17.8, 24.5)) # excluding: 15.4
+
+# removed: 'alcohol','canabis','smoking','android_fatmass','FS','glucose','heart_rate','IMT','LVM','RWT', # only at 18 and 24
+# 'IL_6', # only at 10
+# 'liver_fat', # only at 24 (earlier binary variable)
+# 'waist_hip_ratio', # only 10/12 and 24
+# 'CMR_age', 'DEP_age', 'DEP_score','TFI','height',
+# 'fatmass','leanmass', 'weight', # using vars indexed to height
+
+names = c('felt\nmiserable\nor unhappy',
+          'did not\nenjoy\nanything', 
+          'so tired\njust sat\naround',
+          'was very\nrestless',
+          'felt they\nwere no good\nanymore', 
+          'cried\na lot', 
+          'hard to\nthink or\nconcentrate', 
+          'hated\nthemselves',
+          'felt they\nwere a\nbad person', 
+          'felt\nlonely',  
+          'nobody\nreally loved\nthem', 
+          'never\nas good as\nothers', 
+          'felt did\neverything\nwrong',
+          
+          'Body mass\nindex (BMI)',
+          'Fat mass\nindex (FMI)',
+          'Lean mass\nindex (LMI)',
+          'Waist\ncircumference',
+          'DBP',
+          'SBP',
+          'Pulse wave\nvelocity',
+          'HDL\ncholesterol',
+          'LDL\ncholesterol',
+          'Insulin', 
+          'Triglycerides',
+          'C-reactive\nprotein')
+
+# ---------------------------------------------------------------------------
+# Remove sex for now
+d = df[,-1]
+
+nT = 3 # number of timepoints 
+nS = ncol(d) # number of symptoms/markers
+# Design matrix with nT columns and nS rows
+des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = T) 
+
+# Unpruned model, get fit
+# panelgvar() specifies a graphical vector-autoregression (GVAR) model on panel data
+# When using only observed variables in the network, the panel data model takes the form of a random intercept cross-lagged panel model, 
+# except the contemporaneous and between-subjects structures are modeled as networks. 
+# This allows for the fixed-effects decomposition into temporal, contemporaneous, and between-subjects networks. 
+# NOTE: when full-information maximum likelihood (FIML) estimation is used, the panel data model is a multi-level GVAR model 
+# (as implemented in mlVAR) with only random intercepts (no random network parameters). 
+start_time <- Sys.time()
+umod <- psychonetrics::panelgvar(d, vars = des, # lambda=
+                                 missing ='pairwise', 
+                                 estimator ='FIML', 
+                                 optimizer = 'nlminb',
+                                 verbose = T) %>% 
+  psychonetrics::runmodel() # run unpruned 
+Sys.time() - start_time
+
+save(umod, file='../results/mod2/unpruned.RData')
+# Warning messages:
+#   1: In doTryCatch(return(expr), name, parentenv, handler) :
+#   restarting interrupted promise evaluation
+# 2: In psychonetrics::runmodel(.) :
+#   Information matrix or implied variance-covariance matrix was not positive semi-definite. This can happen because the model is not identified, or because the optimizer encountered problems. Try running the model with a different optimizer using setoptimizer(...).
+# 3: In psychonetrics::runmodel(.) :
+#   Model might not have converged properly: mean(abs(gradient)) > 1.
+unprunedfit <- umod@fitmeasures
+
+
+# pruned model, get fit, parameters, and matrices
+pruned <- umod %>% psychonetrics::prune(recursive=T) # (recursively) remove parameters that are not significant and refit the model
+prunedfit <- pruned@fitmeasures
+prunedparameters <- pruned %>% psychonetrics::parameters()
+# ==============================================================================
+# In the GVAR, temporal dependencies are modeled via a regression on the previous measurement occasion, 
+# which leads to a matrix of regression coefficients that can also be used to draw a directed network model 
+# often termed the temporal network because it encodes predictive effects over time. 
+# The remaining variances and covariances (i.e., the covariance structure after controlling for the previous 
+# measurement occasion) can be modeled as a GGM, which is also termed the contemporaneous network. 
+# When time series of multiple subjects are available, a third GGM can be formed on the between-subject effects 
+# (relationships between stable means)—also termed the between-subject network.
+
+namedMatrix <- function(model, vrbls, type){
+  # type gets values = 'PDC' (namedTemporal), 
+  # 'omega_zeta_within' (namedContemporaneous),
+  # 'omega_zeta_between' (namedBetween)
+  mat <- psychonetrics::getmatrix(model, type) # extract an estimated matrix from model
+  rownames(mat) <- colnames(mat) <- vrbls
+  return(mat)
+}
+
+# Get three networks
+prunedtemporal <- namedMatrix(pruned, names, 'PDC')
+prunedcontemporaneous <- namedMatrix(pruned, names, 'omega_zeta_within')
+prunedbetween <- namedMatrix(pruned, names, 'omega_zeta_between')
+
+layout <- qgraph::averageLayout(prunedtemporal, prunedcontemporaneous, prunedbetween, 
+                                layout = "spring")
+write.csv(layout, '../results/mod2/layout.csv')
+
+groups <- c(rep('dep',13), rep('cmr',12))
+
+plotnets <- function(network, title, filename) {
+  
+  g <- qgraph(network, title=title,
+              labels=names, 
+              threshold=0.01,
+             theme = "colorblind", 
+             repulsion = 0.7, 
+             maximum = 1, 
+             layout= layout, 
+             groups = groups, 
+             color = c('#FFEAF5','#E1EDFF'),
+             vsize = 8, 
+             label.scale.equal=T,
+             vsize2=7,
+             shape ='ellipse',
+             border.width=0.5,
+             label.cex = 1.1, legend = FALSE,
+             filetype='png', 
+             filename=file.path('./assets',filename))
+  
+  return(g)
+}
+
+t = plotnets(prunedtemporal, 'Temporal network', 'tempPlot')
+b = plotnets(prunedbetween, 'Between-person network', 'betweenPlot')
+c = plotnets(prunedcontemporaneous, 'Contemporaneous network', 'contempPlot')
+
+descript <- function(matrix, type='crossNet') {
+  if (type=='crossNet') { vector <- as.vector(gdata::lowerTriangle(matrix)) } else { vector <- as.vector(matrix) }
+  estimates <- vector[vector !=0]
+  descriptives <- psych::describe(estimates)
+  return(descriptives)
+}  
+
+prunedtemp.desc <- descript(prunedtemporal, type='temporal')
+prunedcont.desc <- descript(prunedcontemporaneous)
+prunedbet.desc  <- descript(prunedbetween)
+
+# pruned centrality
+PDCcentp <- qgraph::centrality_auto(prunedtemporal)
+PDCcentP <- PDCcentp$node.centrality
+contCentp <- qgraph::centrality_auto(psychonetrics::getmatrix(pruned, 'omega_zeta_within'))
+contCentP <- contCentp$node.centrality
+betCentp <- qgraph::centrality_auto(psychonetrics::getmatrix(pruned, 'omega_zeta_between'))
+betCentP <- betCentp$node.centrality
+
+# pruned adjacency matrices
+prune.adjacencyT <- 1*(psychonetrics::getmatrix(pruned, 'beta')!=0)
+prune.adjacencyB <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_between')!=0)
+prune.adjacencyC <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_within')!=0)
+
+# pruned invariance
+# genderComp <- df %>% tidyr::drop_na(sex)
+
+# Pconfigural <-  psychonetrics::panelgvar(genderComp, vars = des, 
+#                                          estimator = 'FIML', missing = 'pairwise', 
+#                                          groups= 'sex',
+#                                          beta = prune.adjacencyT, 
+#                                          omega_zeta_within = prune.adjacencyC, 
+#                                          omega_zeta_between = prune.adjacencyB) %>% 
+#   psychonetrics::runmodel()
+# prunedconfig.fit <- Pconfigural@fitmeasures
+# 
+# Pconstrained <- Pconfigural %>% psychonetrics::groupequal('beta') %>% 
+#   psychonetrics::groupequal('omega_zeta_within') %>% 
+#   psychonetrics::groupequal("omega_zeta_between") %>% 
+#   psychonetrics::runmodel()
+# prunedconstrained.fit <- Pconstrained@fitmeasures
+# 
+# prunedcomparison <- psychonetrics::compare(Pconfigural = Pconfigural, 
+#                                            Pconstrained = Pconstrained)
+# 
+# aicDif <- Pconfigural@fitmeasures$aic.ll-Pconstrained@fitmeasures$aic.ll
+# bicDif <- Pconfigural@fitmeasures$bic-Pconstrained@fitmeasures$bic
+# prunedICs <- cbind(aicDif, bicDif)
+# 
+# #stepup model, get fit, parameters and matrices
+# stepup <- pruned %>% psychonetrics::stepup()
+# stepupfit <- stepup@fitmeasures
+# stepupparameters <- stepup %>% parameters()
+# 
+# stepuptemporal <- namedTemporal(stepup, names)
+# stepupcontemporaneous <- namedContemporaneous(stepup, names)
+# stepupbetween <- namedBetween(stepup, names)
+# stepuptemp.desc <- temporalDescript(stepuptemporal )
+# stepupcont.desc <- crossNetDescript(stepupcontemporaneous )
+# stepupbet.desc <- crossNetDescript(stepupbetween )
+# 
+# #stepup centrality
+# PDCcents<- centrality_auto(stepuptemporal )
+# PDCcentS <- PDCcents$node.centrality
+# contCents<- centrality_auto(getmatrix(stepup, "omega_zeta_within"))
+# contCentS <- contCents$node.centrality
+# betCents<- centrality_auto(getmatrix(stepup, "omega_zeta_between"))
+# betCentS <- betCents$node.centrality
+# 
+# #stepup adjacency matrices
+# stepupadjacencyT <- 1*(getmatrix(stepup, "beta")!=0)
+# stepupadjacencyB<- 1*(getmatrix(stepup, "omega_zeta_between")!=0)
+# stepupadjacencyC<- 1*(getmatrix(stepup, "omega_zeta_within")!=0)
+# 
+# # pruned invariance
+# Sconfigural<- panelgvar(genderComp, vars= des, estimator= "FIML", missing= "pairwise", groups= "Gender",
+#                         beta= stepupadjacencyT, omega_zeta_within= stepupadjacencyC, omega_zeta_between= stepupadjacencyB)%>% runmodel
+# stepupconfig.fit <- Sconfigural@fitmeasures
+# 
+# Sconstrained<- Sconfigural%>% groupequal("beta")%>% groupequal("omega_zeta_within")%>% groupequal("omega_zeta_between")%>% runmodel()
+# stepupconstrained.fit <- Sconstrained@fitmeasures
+# 
+# stepupcomparison<- psychonetrics::compare(Sconfigural= Sconfigural, Sconstrained= Sconstrained)
+# 
+# SaicDif<- Sconfigural@fitmeasures$aic.ll-Sconstrained@fitmeasures$aic.ll
+# SbicDif<- Sconfigural@fitmeasures$bic-Sconstrained@fitmeasures$bic
+# stepupICs <- cbind(SaicDif, SbicDif)
+
+
+# ==============================================================================
+# =========== Cross-sectional network analysis (single timepoint) ==============
 # ==============================================================================
 
 library(qgraph)
 
 run_net <- function(times, mean_times='',
                     remove = c('score','age','weight','total_fatmass','total_leanmass',
-                               'trunk_fatmass','TMI'), 
+                               'trunk_fatmass','TMI','TFI','height'), 
                     verbose = TRUE) { 
   # Subset columns 
   d <- data[,sel(times)]
@@ -48,6 +315,7 @@ run_net <- function(times, mean_times='',
                         labels=names(d_obs),
                         graph = 'glasso', # with EPIC model selection
                         sampleSize = n_obs,
+                        # estimator ='FIML', 
                         layout = 'spring', # node placement
                         tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
                         lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
@@ -62,9 +330,16 @@ run_net <- function(times, mean_times='',
   ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
   names(ci) = gsub('value.', '', names(ci))
   
+  # Fit measures 
+  fit <- as.data.frame(ggmFit(gra, covMat=mat, sampleSize=n_obs)$fitMeasures)
+  fit['N_obs'] <- n_obs
+  
+  # Layout
+  layout <- gra$layout
+  
   # Save output
   if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
-  save(wm, ci, n_obs, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
+  save(wm, ci, fit, layout, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
   
   return(gra)
 }
@@ -125,358 +400,6 @@ cn24.1 <- run_net(times = c('23.8y','24.5y'))
 # fit_mgm$nodemodels # list with the p glmnet objects from which all above results are computed. 
 # We inspect the weigthed adjacency matrix stored in fit_mgm$pairwise$wadj
 
-# =====================
-
-# library(bootnet)
-
-# res = estimateNetwork(d, default = 'EBICglasso', threshold=T)
-# plot(res, cut=0, theme='colorblind', layout='spring', labels=names)
-
-names = c('felt\nmiserable\nor unhappy', 
-          'had\nfun',
-          'did not\nenjoy\nanything', 
-          'so tired\njust sat\naround', 
-          'was very\nrestless',
-          'felt they\nwere no good\nanymore', 
-          'cried\na lot',
-          'felt\nhappy', 
-          'hard to\nthink or\nconcentrate', 
-          'hated\nthemselves',
-          'enjoyed doing\nlots of things',
-          'felt they\nwere a\nbad person', 
-          'felt\nlonely', 
-          'nobody\nreally loved\nthem', 
-          'never\nas good as\nothers', 
-          'felt did\neverything\nwrong', 
-          'had a\ngood\ntime',
-          
-          'total\nfat', 'total\nlean','trunk\nfat','android\nfat', 
-          'liver\nfat',
-          'SBP', 'DBP',
-          'heart\nrate', 
-          'cf-PWV', 
-          'ejection\nduration',
-          'IMT',
-          'intra-ventr.\nthickness\n(dyastolic)', 
-          'intra-ventr.\nthickness\n(systolic)',
-          'left\natrial\nsize',
-          'left ventr.\nvolume\n(dyastolic)', 
-          'left ventr.\nvolume\n(systolic)', 
-          'poster. wall\nthickness\n(dyastolic)', 
-          'poster. wall\nthickness\n(systolic)', 
-          'HDL-c', 'LDL-c',
-          'insulin',
-          'triglycerides',
-          'glucose',  
-          'CRP',
-          'BMI',  
-          'FMI')
-# ==============================================================================
-
-# TODO: figure out liver measure 
-# Liver Scan: Fat in liver (0-1) vs. Fatty liver result (CAP value; dB/m) 100-400 corr=.15
-
-check <- function(var, times=c('10.6y','17.8y','23.8y')) {
-  vars = paste0(var,'_',times)
-  for (v in vars) { print(summary(as.factor(data[,v]))); cat('\n') }
-  return(data[,vars])
-}
-
-felt_miserable_or_unhappy <- check('sDEP01')
-did_not_enjoy_anything    <- check('sDEP03') # didn't enjoy anything at all
-so_tired_just_sat_around  <- check('sDEP04') # felt so tired that they just sat around and did nothing
-was_very_restless         <- check('sDEP05') 
-they_were_no_good_anymore <- check('sDEP06') # felt they were no good any more
-cried_a_lot               <- check('sDEP07') 
-felt_happy                <- check('sDEP08')
-hard_to_think_concentrate <- check('sDEP09') # found it hard to think properly or concentrate
-hated_themselves          <- check('sDEP10')
-felt_were_a_bad_person    <- check('sDEP12')  # felt they were a bad person
-felt_lonely               <- check('sDEP13')
-nobody_really_loved_them  <- check('sDEP14') # thought nobody really loved them 
-never_as_good_as_others   <- check('sDEP15') # thought they could never be as good as other kids/people
-felt_did_everything_wrong <- check('sDEP16') # felt they did everything wrong
-
-# Other positive items are not matching between timepoints
-# has_been_having_fun      <- check(c('sDEP02_17.8y'))
-# enjoyed_lots_of_things   <- check(c('sDEP11_17.8y')) # enjoyed doing lots of things
-# has_had_a_good_time      <- check(c('sDEP17_17.8y'))
-# laughed_a_lot            <- check(c('sDEP19_23.8y')) 
-# looked_forward_to_future <- check(c('sDEP20_23.8y')) # looked forward to the day ahead
-# positive_about_future.   <- check(c('sDEP21_23.8y')) # felt really positive about the future 
-# felt_valued              <- check(c('sDEP22_23.8y'))
-
-# height <- data[,sel('height', c(17.8,24.5))]
-# weight <- data[,sel('weight', c(17.8,24.5))]
-check2 <- function(var, times=c(9.8, 17.8, 24.5)) {
-  d = data[,sel(var, times)]
-  print(summary(d))
-  print(round(cor(d, use='pairwise.complete.obs'),2))
-  return(d)
-}
-bmi        <- check2('BMI')
-waist_circ <- check2('waist_circ', c(9.8, 15.4, 24.5))
-totl_fatm  <- check2('total_fatmass')
-totl_leanm <- check2('total_leanmass')
-# andr_fatm <- check2('android_fatmass')
-# trun_fatm <- check2('trunk_fatmass')
-# liver_fat <- check2('liver_fat')
-sbp       <- check2('SBP', c(10.6, 17.8, 24.5))
-dbp       <- check2('DBP', c(10.6, 17.8, 24.5))
-# imt       <- check2('IMT')
-cf_pwv    <- check2('PWV', c(10.6, 17.8, 24.5))
-# hrt_rate  <- check2('heart_rate')
-# eject_dur <- check2('eject_dur')
-# heart echo
-# iv_thick_s  <- check2('sIVS') # interventricular septum thickness in systole  (cm)
-# iv_thick_d  <- check2('dIVS') #               ' " "                  diastole (cm)
-# pw_thick_s  <- check2('sPWT') # posterior wall thickness in systole  (cm)
-# pw_thick_d  <- check2('dPWT') #               " " "         diastole  (cm)
-# lv_volum_s  <- check2('sLVID') # internal dimension (volume?) end-systolic  (cm)
-# lv_volum_d  <- check2('dLVID') #               " " "          end-diastolic (cm)
-# metabolites
-# tot_chol    <- check2('tot_chol')
-hdl_chol    <- check2('HDL_chol')
-ldl_chol    <- check2('LDL_chol')
-insulin     <- check2('insulin')
-triglyc     <- check2('triglyc')
-# glucose     <- check2('glucose') # highly correlated but less missing 
-crp         <- check2('CRP')
-
-# only relevant variable for design matrix
-d = cbind(cried_a_lot, did_not_enjoy_anything, felt_did_everything_wrong, felt_happy, 
-          felt_lonely, felt_miserable_or_unhappy, felt_were_a_bad_person, hated_themselves,
-          hard_to_think_concentrate, never_as_good_as_others, nobody_really_loved_them, 
-          so_tired_just_sat_around, they_were_no_good_anymore, was_very_restless,
-          bmi, waist_circ, 
-          totl_fatm, totl_leanm, 
-          sbp, dbp, cf_pwv, # hrt_rate, imt,
-          # eject_dur,lv_volum_d, lv_volum_s, pw_thick_d, pw_thick_s, iv_thick_d, iv_thick_s, 
-          hdl_chol, ldl_chol, insulin, triglyc, crp) # glucose, 
-
-names = c('cried\na lot', 'did not\nenjoy\nanything', 'felt did\neverything\nwrong', 'felt\nhappy', 
-          'felt\nlonely', 'felt\nmiserable\nor unhappy', 'felt they\nwere a\nbad person', 'hated\nthemselves',
-          'hard to\nthink or\nconcentrate', 'never\nas good as\nothers', 'nobody\nreally loved\nthem', 
-          'so tired\njust sat\naround', 'felt they\nwere no good\nanymore', 'was very\nrestless',
-          'BMI', 'waist\ncircumference',
-          'total\nfat\nmass', 'total\nlean\nmass', 
-          'SBP', 'DBP', 'cf-PWV', # 'heart\nrate', 'IMT',
-          # 'ejection\nduration','left ventr.\nvolume\n(dyastolic)', 'left ventr.\nvolume\n(systolic)', 
-          # 'poster. wall\nthickness\n(dyastolic)', 'poster. wall\nthickness\n(systolic)', 
-          # 'intra-ventr.\nthickness\n(dyastolic)', 'intra-ventr.\nthickness\n(systolic)', 
-          'HDL-c', 'LDL-c','insulin', 'triglycerides', 'CRP') # 'glucose', 
-
-# TODO: add sex variable 
-sex <- rbinom(nrow(data), 1, 0.5)
-# random binomial deviate generator function creating a vector of length nrow(data) 
-# containing '0' and '1' with success probability of 0.5
-df <- cbind(data$sex, d)
-
-# ---------------------------------------------------------------------------
-nT = 3 # number of timepoints 
-nS = ncol(d) # number of symptoms/markers
-# Design matrix with nT columns and nS rows
-des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = T) 
-
-# Unpruned model, get fit
-# panelgvar() specifies a graphical vector-autoregression (GVAR) model on panel data
-# When using only observed variables in the network, the panel data model takes the form of a random intercept cross-lagged panel model, 
-# except the contemporaneous and between-subjects structures are modeled as networks. 
-# This allows for the fixed-effects decomposition into temporal, contemporaneous, and between-subjects networks. 
-# NOTE: when full-information maximum likelihood (FIML) estimation is used, the panel data model is a multi-level GVAR model 
-# (as implemented in mlVAR) with only random intercepts (no random network parameters). 
-start_time <- Sys.time()
-umod <- psychonetrics::panelgvar(d, vars = des, 
-                                  #lambda=
-                                 estimator = 'FIML', 
-                                 missing ='pairwise', 
-                                 verbose = T) %>% 
-  psychonetrics::runmodel() # run unpruned 
-# Warning messages:
-# 1: In psychonetrics::runmodel(.) :
-#   Information matrix or implied variance-covariance matrix was not positive semi-definite. This can happen because the model is not identified, or because the optimizer encountered problems. Try running the model with a different optimizer using setoptimizer(...).
-# 2: In psychonetrics::runmodel(.) :
-#   One or more parameters were estimated to be near its bounds. This may be indicative of, for example, a Heywood case, but also of an optimization problem. Interpret results and fit with great care. For unconstrained estimation, set bounded = FALSE.
-# 3: In psychonetrics::runmodel(.) :
-#   Model might not have converged properly: mean(abs(gradient)) > 1.
-Sys.time() - start_time
-unprunedfit <- umod@fitmeasures
-
-
-# pruned model, get fit, parameters, and matrices
-pruned <- umod %>% psychonetrics::prune(recursive=T) # (recursively) remove parameters that are not significant and refit the model
-prunedfit <- pruned@fitmeasures
-prunedparameters <- pruned %>% psychonetrics::parameters()
-# ==============================================================================
-# In the GVAR, temporal dependencies are modeled via a regression on the previous measurement occasion, 
-# which leads to a matrix of regression coefficients that can also be used to draw a directed network model 
-# often termed the temporal network because it encodes predictive effects over time. 
-# The remaining variances and covariances (i.e., the covariance structure after controlling for the previous 
-# measurement occasion) can be modeled as a GGM, which is also termed the contemporaneous network. 
-# When time series of multiple subjects are available, a third GGM can be formed on the between-subject effects 
-# (relationships between stable means)—also termed the between-subject network.
-
-namedMatrix <- function(model, vrbls, type){
-  # Type gets values = 'PDC' (namedTemporal), 
-  # 'omega_zeta_within' (namedContemporaneous),
-  # 'omega_zeta_between' (namedBetween)
-  mat <- psychonetrics::getmatrix(model, type) # extract an estimated matrix from model
-  rownames(mat) <- colnames(mat) <- vrbls
-  return(mat)
-}
-
-prunedtemporal <- namedMatrix(pruned, names, 'PDC')
-prunedcontemporaneous <- namedMatrix(pruned, names, 'omega_zeta_within')
-prunedbetween <- namedMatrix(pruned, names, 'omega_zeta_between')
-
-layout <- qgraph::averageLayout(prunedtemporal, prunedcontemporaneous, prunedbetween, layout = "spring")
-groups <- c(rep('dep',14), rep('cmr',12))
-
-library(qgraph)
-qgraph(prunedtemporal, labels=names, threshold=0.01,
-       title='Temporal network',
-       theme = "colorblind", 
-       repulsion = 0.7, 
-       maximum = 1, 
-       layout= layout, 
-       groups = groups, 
-       color = c('#FFEAF5','#E1EDFF'),
-       vsize = 8, 
-       label.scale.equal=T,
-       vsize2=7,
-       shape ='ellipse',
-       # borders=F,
-       border.width=0.5,
-       label.cex = 1.1,
-       legend = FALSE,
-       filetype= "pdf",
-       filename= "tempPlot")
-
-qgraph(prunedcontemporaneous, labels=names, threshold=0.01,
-       title='Contemporaneous network',
-       theme = "colorblind", 
-       repulsion = 0.7, 
-       maximum = 1, 
-       layout= layout, 
-       groups = groups, 
-       color = c('#FFEAF5','#E1EDFF'),
-       vsize = 8, 
-       label.scale.equal=T,
-       vsize2=7,
-       shape ='ellipse',
-       # borders=F,
-       border.width=0.5,
-       label.cex = 1.1,
-       legend = FALSE,
-       filetype= "pdf",
-       filename= "contempPlot")
-
-qgraph(prunedbetween, labels=names, threshold=0.01,
-       title='Between-person network',
-       theme = "colorblind", 
-       repulsion = 0.7, 
-       maximum = 1, 
-       layout= layout, 
-       groups = groups, 
-       color = c('#FFEAF5','#E1EDFF'),
-       vsize = 8, 
-       label.scale.equal=T,
-       vsize2=7,
-       shape ='ellipse',
-       # borders=F,
-       border.width=0.5,
-       label.cex = 1.1,
-       legend = FALSE,
-       filetype= "pdf",
-       filename= "betweenPlot")
-
-
-descript <- function(matrix, type='crossNet') {
-  if (type=='crossNet') { vector <- as.vector(gdata::lowerTriangle(matrix)) } else { vector <- as.vector(matrix) }
-  estimates <- vector[vector !=0]
-  descriptives <- psych::describe(estimates)
-  return(descriptives)
-}  
-
-prunedtemp.desc <- descript(prunedtemporal, type='temporal')
-prunedcont.desc <- descript(prunedcontemporaneous)
-prunedbet.desc  <- descript(prunedbetween)
-
-# pruned centrality
-PDCcentp <- qgraph::centrality_auto(prunedtemporal)
-PDCcentP <- PDCcentp$node.centrality
-contCentp <- qgraph::centrality_auto(psychonetrics::getmatrix(pruned, 'omega_zeta_within'))
-contCentP <- contCentp$node.centrality
-betCentp <- qgraph::centrality_auto(psychonetrics::getmatrix(pruned, 'omega_zeta_between'))
-betCentP <- betCentp$node.centrality
-
-# pruned adjacency matrices
-prune.adjacencyT <- 1*(psychonetrics::getmatrix(pruned, 'beta')!=0)
-prune.adjacencyB <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_between')!=0)
-prune.adjacencyC <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_within')!=0)
-
-# pruned invariance
-genderComp <- df %>% tidyr::drop_na(sex)
-
-Pconfigural <-  psychonetrics::panelgvar(genderComp, vars = des, estimator = 'FIML', missing = 'pairwise', 
-                                         groups= 'sex',
-                                         beta = prune.adjacencyT, 
-                                         omega_zeta_within = prune.adjacencyC, 
-                                         omega_zeta_between = prune.adjacencyB) %>% 
-  psychonetrics::runmodel()
-prunedconfig.fit <- Pconfigural@fitmeasures
-
-Pconstrained <- Pconfigural %>% psychonetrics::groupequal('beta') %>% 
-  psychonetrics::groupequal('omega_zeta_within') %>% 
-  psychonetrics::groupequal("omega_zeta_between") %>% 
-  psychonetrics::runmodel()
-prunedconstrained.fit <- Pconstrained@fitmeasures
-
-prunedcomparison <- psychonetrics::compare(Pconfigural = Pconfigural, 
-                                           Pconstrained = Pconstrained)
-
-aicDif <- Pconfigural@fitmeasures$aic.ll-Pconstrained@fitmeasures$aic.ll
-bicDif <- Pconfigural@fitmeasures$bic-Pconstrained@fitmeasures$bic
-prunedICs <- cbind(aicDif, bicDif)
-
-#stepup model, get fit, parameters and matrices
-stepup <- pruned %>% psychonetrics::stepup()
-stepupfit <- stepup@fitmeasures
-stepupparameters <- stepup %>% parameters()
-
-stepuptemporal <- namedTemporal(stepup, names)
-stepupcontemporaneous <- namedContemporaneous(stepup, names)
-stepupbetween <- namedBetween(stepup, names)
-stepuptemp.desc <- temporalDescript(stepuptemporal )
-stepupcont.desc <- crossNetDescript(stepupcontemporaneous )
-stepupbet.desc <- crossNetDescript(stepupbetween )
-
-#stepup centrality
-PDCcents<- centrality_auto(stepuptemporal )
-PDCcentS <- PDCcents$node.centrality
-contCents<- centrality_auto(getmatrix(stepup, "omega_zeta_within"))
-contCentS <- contCents$node.centrality
-betCents<- centrality_auto(getmatrix(stepup, "omega_zeta_between"))
-betCentS <- betCents$node.centrality
-
-#stepup adjacency matrices
-stepupadjacencyT <- 1*(getmatrix(stepup, "beta")!=0)
-stepupadjacencyB<- 1*(getmatrix(stepup, "omega_zeta_between")!=0)
-stepupadjacencyC<- 1*(getmatrix(stepup, "omega_zeta_within")!=0)
-
-# pruned invariance
-Sconfigural<- panelgvar(genderComp, vars= des, estimator= "FIML", missing= "pairwise", groups= "Gender",
-                        beta= stepupadjacencyT, omega_zeta_within= stepupadjacencyC, omega_zeta_between= stepupadjacencyB)%>% runmodel
-stepupconfig.fit <- Sconfigural@fitmeasures
-
-Sconstrained<- Sconfigural%>% groupequal("beta")%>% groupequal("omega_zeta_within")%>% groupequal("omega_zeta_between")%>% runmodel()
-stepupconstrained.fit <- Sconstrained@fitmeasures
-
-stepupcomparison<- psychonetrics::compare(Sconfigural= Sconfigural, Sconstrained= Sconstrained)
-
-SaicDif<- Sconfigural@fitmeasures$aic.ll-Sconstrained@fitmeasures$aic.ll
-SbicDif<- Sconfigural@fitmeasures$bic-Sconstrained@fitmeasures$bic
-stepupICs <- cbind(SaicDif, SbicDif)
 
 # Mother reported depression and fat mass 10-13 years
 m_totfat3 <- data.frame('dep1'= data[,'mDEP_score_9.6y'], 'fat1'= data[,'total_fatmass_9.8y'],

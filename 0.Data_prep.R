@@ -182,7 +182,7 @@ cmr_09.8y <- extr_cmr(data.frame('f9_weight'='weight', # kg (DXA)
                       age = 'f9003c') # f9006c REVISIT? 196 children came twice, mostly 1 month apart
 
 # Add BMI, FMI, TMI and LMI
-add = data.frame('BMI'='weight','FMI'='total_fatmass','TMI'='trunk_fatmass','LMI'='total_leanmass')
+add = data.frame('BMI'='weight','FMI'='total_fatmass','TFI'='trunk_fatmass','LMI'='total_leanmass')
 for (v in names(add)) {
   if (v=='BMI') {div=1} else {div=1000} # weight is already in kg but fat/lean mass is in grams
   at='_9.8y'
