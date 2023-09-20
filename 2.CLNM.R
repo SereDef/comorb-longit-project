@@ -51,17 +51,100 @@ add <- function(vars, times, output=df) {
 }
 
 # Add depression scores 
-df = add(paste0('sDEP', sprintf('%02d', 1:13) ), 
-         c(10.6, 17.8, 23.8))
-# Add cardio-metabolic variables 
-df = add(c('BMI','FMI','LMI'), 
-         c(11.8, 17.8, 24.5)) # excluding: 9.8, (10.7) and 15.4
-df = add(c('waist_circ'), 
-         c( 9.8, 15.4, 24.5)) # excluding 10.6 and 11.8
-df = add(c('DBP','SBP','PWV'), 
-         c(10.6, 17.8, 24.5)) # excluding: 9.8, 10.7 and 15.4
-df = add(c('HDL_chol','LDL_chol', 'insulin', 'triglyc','CRP'), # 'tot_chol'
-         c( 9.8, 17.8, 24.5)) # excluding: 15.4
+# df = add(paste0('sDEP', sprintf('%02d', 1:13) ), 
+#          c(10.6, 17.8, 23.8))
+# # Add cardio-metabolic variables 
+# df = add(c('BMI','FMI','LMI'), 
+#          c(11.8, 17.8, 24.5)) # excluding: 9.8, (10.7) and 15.4
+# df = add(c('waist_circ'), 
+#          c( 9.8, 15.4, 24.5)) # excluding 10.6 and 11.8
+# df = add(c('DBP','SBP','PWV'), 
+#          c(10.6, 17.8, 24.5)) # excluding: 9.8, 10.7 and 15.4
+# df = add(c('HDL_chol','LDL_chol', 'insulin', 'triglyc','CRP'), # 'tot_chol'
+#          c( 9.8, 17.8, 24.5)) # excluding: 15.4
+
+# 10.6 -> 10.7
+data$BMI_10.6y <- data$BMI_10.7y
+
+var_times = c(# '9.6y',
+          '9.8y',
+          '10.6y', 
+          '11.8y',
+          '12.8y',
+          # '13.1y',
+          '13.8y',
+          '15.4y', # cmr only
+          # '16y','17y',
+          '16.6y',
+          '17.8y',
+          '18.7y', # dep only
+          '21.9y', # dep only
+          '22.9y', # dep only
+          '23.8y', # dep only
+          '24.5y') # cmr only
+
+var_names = c(paste0('sDEP', sprintf('%02d', 1:13)),
+         # 'height', 'weight'
+         'BMI',
+         'waist_circ',
+         # 'waist_hip_ratio', # ralted to waist_circ
+         # 'total_fatmass', # index to height
+         # 'total_leanmass', # index to height
+         'FMI',
+         # 'LMI',
+         # 'trunk_fatmass','TFI',
+         'android_fatmass',
+         # 'liver_fat', # only one observation
+         'DBP',
+         'SBP',
+         'PWV',
+         'IMT', # 2 times
+         # 'heart_rate', # unsure measure compares
+         # 'LVM', # 2 times
+         # 'RWT', # 2 times
+         # 'FS', # 2 times
+         # 'tot_chol',
+         'HDL_chol',
+         'LDL_chol',
+         'insulin',
+         'triglyc',
+         'glucose',
+         'CRP')
+         # 'IL_6', # only one timepoint
+         # 'alcohol', # 2 times
+         # 'canabis', # 2 times
+         # 'smoking') # 2 times
+
+m <- matrix(ncol=length(var_times), nrow=length(var_names), dimnames=list(var_names, var_times))
+
+for (v in row.names(m)){
+  obs <- sel(v)
+  for (t in colnames(m)) {
+    time_present <- grepl(t, obs)
+    if (any(time_present)) {
+      m[v,t] <- obs[which(time_present)]
+    }
+  }
+}
+
+des = m[c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
+
+start_time <- Sys.time()
+umod <- psychonetrics::panelgvar(data, vars = des, # lambda=
+                                 # missing ='pairwise', 
+                                 estimator ='FIML', 
+                                 # optimizer = 'nlminb',
+                                 verbose = TRUE) %>% 
+  psychonetrics::runmodel() # run unpruned 
+Sys.time() - start_time
+
+ms = c('beta', 
+  'omega_zeta_within', 'delta_zeta_within','sigma_epsilon_within',
+  'omega_zeta_between','delta_zeta_between','sigma_epsilon_between')
+
+pdf('res_t13_v6.pdf')
+CIplot(umod, ms) 
+dev.off()
 
 # removed: 'alcohol','canabis','smoking','android_fatmass','FS','glucose','heart_rate','IMT','LVM','RWT', # only at 18 and 24
 # 'IL_6', # only at 10
@@ -104,7 +187,7 @@ d = df[,-1]
 nT = 3 # number of timepoints 
 nS = ncol(d) # number of symptoms/markers
 # Design matrix with nT columns and nS rows
-des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = T) 
+des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = TRUE) 
 
 # Unpruned model, get fit
 # panelgvar() specifies a graphical vector-autoregression (GVAR) model on panel data
@@ -115,10 +198,10 @@ des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = T)
 # (as implemented in mlVAR) with only random intercepts (no random network parameters). 
 start_time <- Sys.time()
 umod <- psychonetrics::panelgvar(d, vars = des, # lambda=
-                                 missing ='pairwise', 
+                                 # missing ='pairwise', 
                                  estimator ='FIML', 
-                                 optimizer = 'nlminb',
-                                 verbose = T) %>% 
+                                 # optimizer = 'nlminb',
+                                 verbose = TRUE) %>% 
   psychonetrics::runmodel() # run unpruned 
 Sys.time() - start_time
 
@@ -174,7 +257,7 @@ plotnets <- function(network, title, filename) {
              theme = "colorblind", 
              repulsion = 0.7, 
              maximum = 1, 
-             layout= layout, 
+             layout= 'spring',# layout, 
              groups = groups, 
              color = c('#FFEAF5','#E1EDFF'),
              vsize = 8, 
@@ -400,76 +483,5 @@ cn24.1 <- run_net(times = c('23.8y','24.5y'))
 # fit_mgm$nodemodels # list with the p glmnet objects from which all above results are computed. 
 # We inspect the weigthed adjacency matrix stored in fit_mgm$pairwise$wadj
 
-
-# Mother reported depression and fat mass 10-13 years
-m_totfat3 <- data.frame('dep1'= data[,'mDEP_score_9.6y'], 'fat1'= data[,'total_fatmass_9.8y'],
-                        'dep2'= data[,'mDEP_score_11.7y'],'fat2'= data[,'total_fatmass_11.8y'],
-                        'dep3'= data[,'mDEP_score_13.1y'],'fat3'= data[,'total_fatmass_12.8y'])# sDEP_score_12.8y
-# Mother reported depression and fat mass 10-17 years (including average fat between 15.4 and 17.8 measures)
-m_totfat4 <- cbind(m_totfat3, data.frame('dep4'= data[,'mDEP_score_16.7y']))
-m_totfat4$fat4 <- ifelse(rowSums(is.na(data[,sel('total_fatmass',c(15,17))]))<2, 
-                                 rowMeans(data[,sel('total_fatmass',c(15,17))], na.rm=T), NA)
-
-# Self reported depression and fat mass 12-24 years
-m_totfat <- data[,c('sDEP_score_12.8y','total_fatmass_11.8y', # mDEP_score_11.7y
-                    'sDEP_score_17.8y','total_fatmass_17.8y',
-                    'sDEP_score_23.8y','total_fatmass_24.5y')]
-
-names(m_totfat) <- c('dep1','fat1','dep2','fat2','dep3','fat3')
-
-
-samp = m_totfat[rowSums(is.na(m_totfat)) != ncol(m_totfat), ]
-
-# mf <- cov(samp, use='pairwise.complete.obs')
-
 # ==============================================================================
 # ==============================================================================
-
-names = data.frame('DEP01'='felt\nmiserable\nor unhappy', 
-                   'DEP02'='had fun', # only few
-                   'DEP03'='did not\nenjoy\nanything', 
-                   'DEP04'='so tired\njust sat\naround', 
-                   'DEP05'='was very\nrestless',
-                   'DEP06'='felt they\nwere no good\nanymore', 
-                   'DEP07'='cried\na lot', 
-                   'DEP08'='felt\nhappy', 
-                   'DEP09'='hard to\nthink or\nconcentrate', 
-                   'DEP10'='hated\nthemselves',
-                   'DEP11'='enjoyed\ndoing lots of\nthings', # only few
-                   'DEP12'='felt they\nwere a\nbad person',
-                   'DEP13'='felt\nlonely', 
-                   'DEP14'='nobody\nreally loved\nthem', 
-                   'DEP15'='never\nas good as\nothers', 
-                   'DEP16'='felt did\neverything\nwrong', 
-                   'DEP17'='had a\ngood time', 
-                   #'DEP18'='had a\ngood time', 
-                   #'DEP19'='had a\ngood time', 
-                   #'DEP20'='had a\ngood time', 
-                   #'DEP21'='had a\ngood time', 
-                   #'DEP22'='had a\ngood time', 
-                   'BMI'='BMI',
-                   'waist_circ'='waist\ncircumference',
-                   'hip_circ'='hip\ncircumference',
-                   'total_fatmass'='total\nfat', 
-                   'android_fatmass'='android\nfat', 
-                   'trunk_fatmass'='trunk\nfat', 
-                   'liver_fat'='liver\nfat',
-                   'SBP'='SBP', 
-                   'DBP'='DBP', 
-                   'IMT'='IMT', 
-                   'cfPWV'='cf-PWV', 
-                   'heart_rate'='heart\nrate', 
-                   'eject_dur'='ejection\nduration',
-                   'dLVID'='left ventr.\ndiameter\n(dyastolic)', 
-                   'dLVID'='left ventr.\ndiameter\n(systolic)', 
-                   'dPWT'='poster. wall\nthickness\n(dyastolic)', 
-                   'sPWT'='poster. wall\nthickness\n(systolic)', 
-                   'dIVS'='intra-ventr.\nseptum\n(dyastolic)', 
-                   'sIVS'='intra-ventr.\nseptum\n(systolic)', 
-                   'insulin'='insulin', 
-                   'glucose2'='glucose', 
-                   'HDL_chol'='HDL-c', 
-                   'LDL_chol'='LDL-c', 
-                   'triglyc'='triglycerides', 
-                   'CRP'='CRP',
-                   'IL_6'='IL-6')

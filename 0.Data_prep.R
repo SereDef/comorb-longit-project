@@ -644,11 +644,11 @@ for (var in colnames(data)) {
 # save and run -----------------------------------------------------------------
 
 crm <- cor(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
-vcm <- cov(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
+# vcm <- cov(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
 
 saveRDS(data, 'raw_data.rds'); write.csv(data,'raw_data.csv')
 
-write.csv(vcm, 'varcov_matrix.csv')
+# write.csv(vcm, 'varcov_matrix.csv')
 write.csv(crm, 'corr_matrix.csv')
 
 dev.off()

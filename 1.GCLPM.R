@@ -1,31 +1,56 @@
-# Load dependency 
-library(lavaan)
-library(tidySEM)
-library(parallel)
+# ==============================================================================
+# ============= 1. GENERALIZED CROSS-LAG PANEL MODEL (GCLPM) ===================
+# ==============================================================================
+
+# Load dependencies
+invisible(lapply(c('lavaan','tidySEM','pbapply','foreach'), require, character.only = TRUE));
+# library(parallel)
 
 # Read in data
-data <- readRDS('../Mats/raw_data.rds')
+data <- readRDS('../mats/raw_data.rds')
 
 # ------------------------------------------------------------------------------
 # -------------------------- Set-up and functions ------------------------------
 # ------------------------------------------------------------------------------
 
+stationarity = T # model long term effects as stationary over time 
+
 # parallel::detectCores()
 
-## Construct matrix determining all possible model structures -------------------
-m = t(expand.grid(lapply(numeric(4), function(x) c(1, 0)))) # all possible combinations
-m1 = matrix(1, 4, 12) # matrix of 4x12 ones to append later
-# remove combinations not used and reorder
-m0 = m[, colSums(m)!=1]; m0 = m0[,order(colSums(-m0))] # dim = 4x12
-# Construct the full matrix and rename rows and columns 
-mat = data.frame( cbind( rbind(m0,m1), rbind(m1[,-1], m0[,-1])), 
+# All possible combinations of the 8 main parameters
+m = t(expand.grid(lapply(numeric(8), function(x) c(1, 0)))) 
+m = m[, colSums(m)>3] # remove some combinations (e.g. less than 4 parameters in the model)
+# order by number of parameters included and rename 
+mat = data.frame( m[,order(colSums(-m))], 
                   row.names = c('maCL_dep','maCL_cmr','maAR_dep','maAR_cmr',
                                 'ltCL_dep','ltCL_cmr','ltAR_dep','ltAR_cmr'))
-names(mat) <- c('full_st','no_maCL_dep','no_maCL_cmr','no_maAR_dep','no_maAR_cmr',
-                'no_maCL','no_ma_dep','no_ma_CLcmr_ARdep','no_ma_CLdep_ARcmr','no_ma_cmr','no_maAR','no_ma',
-                'no_ltCL_dep','no_ltCL_cmr','no_ltAR_dep','no_ltAR_cmr','no_ltCL','no_lt_dep',
-                'no_lt_CLcmr_ARdep','no_lt_CLdep_ARcmr','no_lt_cmr','no_ltAR' ,'no_lt') 
-rm(m0,m1); write.csv(mat, '../mats/model_structure.csv')
+# generate names for model structure (indicating the parameters which were excluded)
+nmat = mat 
+for (r in 1:nrow(mat)){ # TODO: can't make it work with apply (can't get row.name)
+  nmat[r, ] <- replace(nmat[r, ], which(nmat[r, ]==0), rownames(nmat[r, ]))
+}
+nms = gsub('1-','', gsub('-1', '', lapply(nmat, paste0, collapse='-'))); nms[1]='full'
+names(mat) <- nms
+rm(m, nmat, nms, r)
+
+# Remove some comparisons, to speed up processing: e.g., always estimate long term AR terms
+mat <- mat[, !grepl('ltAR', names(mat))] # --> 57 models
+
+write.csv(mat, '../mats/model_structure.csv')
+
+## Construct matrix determining all possible model structures -------------------
+# m = t(expand.grid(lapply(numeric(4), function(x) c(1, 0)))) # all possible combinations
+# m1 = matrix(1, 4, 12) # matrix of 4x12 ones to append later
+# # remove combinations not used and reorder
+# m0 = m[, colSums(m)!=1]; m0 = m0[,order(colSums(-m0))] # dim = 4x12
+# # Construct the full matrix and rename rows and columns 
+# mat = data.frame( cbind( rbind(m0,m1), rbind(m1[,-1], m0[,-1])), 
+#                   row.names = c('maCL_dep','maCL_cmr','maAR_dep','maAR_cmr',
+#                                 'ltCL_dep','ltCL_cmr','ltAR_dep','ltAR_cmr'))
+# names(mat) <- c('full_st','no_maCL_dep','no_maCL_cmr','no_maAR_dep','no_maAR_cmr',
+#                 'no_maCL','no_ma_dep','no_ma_CLcmr_ARdep','no_ma_CLdep_ARcmr','no_ma_cmr','no_maAR','no_ma',
+#                 'no_ltCL_dep','no_ltCL_cmr','no_ltAR_dep','no_ltAR_cmr','no_ltCL','no_lt_dep',
+#                 'no_lt_CLcmr_ARdep','no_lt_CLdep_ARcmr','no_lt_cmr','no_ltAR' ,'no_lt') 
 # ------------------------------------------------------------------------------
 
 ## Select subsets of data (i.e., which variables and timepoints)
@@ -79,7 +104,7 @@ make_df <- function(dep_name, dep_times, cmr_name, cmr_times, verbose=T) {
 }
 
 ## Specify the formula for the model (used in run_sem)
-formula <- function(dep_temp, cmr_temp, mod='full_st') { # stationarity = T # just set it to true when full model is eastimated
+formula <- function(dep_temp, cmr_temp, mod='full') { # stationarity = T # just set it to true when full model is eastimated
   # How many occasions 
   n_ocs = length(dep_temp)+1
   # Define model structure according to mat matrix
@@ -128,18 +153,14 @@ formula <- function(dep_temp, cmr_temp, mod='full_st') { # stationarity = T # ju
     if (i < n_ocs) { ar = paste0(' + 0*u_cmr', seq(i+1, n_ocs), collapse='') } else { ar = ''}
     restrictions = paste0(restrictions, 'u_cmr',i,' ~~ 0*eta_dep + 0*eta_cmr', ar, '\n') }
   
-  if (mod=='full_st') {
+  if (stationarity) {
     constraints = '# Constraints\n'
     for (i in 2:(n_ocs-1)) {
-      # if (ar_dep!=0) { ar_dep_con = paste0('AR_dep',i,' == (AR_dep1)/',dep_temp[i]/dep_temp[1],'\n') } else { ar_dep_con=''}
-      # if (cl_dep!=0) { cl_dep_con = paste0('CL_dep',i,' == (CL_dep1)/',dep_temp[i]/dep_temp[1],'\n') } else { cl_dep_con=''}
-      # if (ar_cmr!=0) { ar_cmr_con = paste0('AR_cmr',i,' == (AR_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n') } else { ar_cmr_con=''}
-      cl_cmr_con = paste0('CL_cmr',i,' == (CL_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n')
       ar_dep_con = paste0('AR_dep',i,' == (AR_dep1)/',dep_temp[i]/dep_temp[1],'\n')
-      cl_dep_con = paste0('CL_dep',i,' == (CL_dep1)/',dep_temp[i]/dep_temp[1],'\n')
       ar_cmr_con = paste0('AR_cmr',i,' == (AR_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n')
-      cl_cmr_con = paste0('CL_cmr',i,' == (CL_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n')
-      constraints = paste0(constraints, ar_dep_con, ar_cmr_con, cl_dep_con, cl_cmr_con) # maar_dep_con, macl_dep_con, maar_cmr_con, macl_cmr_con)
+      if (cl_dep!=0) { cl_dep_con = paste0('CL_dep',i,' == (CL_dep1)/',dep_temp[i]/dep_temp[1],'\n') } else { cl_dep_con = ''}
+      if (cl_cmr!=0) { cl_cmr_con = paste0('CL_cmr',i,' == (CL_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n') } else { cl_cmr_con = ''}
+      constraints = paste0(constraints, ar_dep_con, ar_cmr_con, cl_dep_con, cl_cmr_con)
     }
   } else { constraints = '' }
   
@@ -160,15 +181,6 @@ save_semgraph <- function(model, n_ocs, name) {
                               'u_cmr1', 'u_cmr2', 'u_cmr3', 'u_cmr4', 'u_cmr5', 'u_cmr6', 
                               'cmr1', 'cmr2', 'cmr3', 'cmr4', 'cmr5', 'cmr6', 
                               'eta_cmr', '', '', '', '', '', rows=6)
-    
-  } else if (n_ocs == 5) {
-    lay = tidySEM::get_layout('eta_dep', '', '', '', '',
-                              'dep1', 'dep2', 'dep3', 'dep4', 'dep5',
-                              'u_dep1', 'u_dep2', 'u_dep3', 'u_dep4', 'u_dep5',
-                              'u_cmr1', 'u_cmr2', 'u_cmr3', 'u_cmr4', 'u_cmr5',
-                              'cmr1', 'cmr2', 'cmr3', 'cmr4', 'cmr5', 
-                              'eta_cmr', '', '', '', '', rows=6)
-    
   } else if (n_ocs == 4) {
     lay = tidySEM::get_layout('eta_dep', '', '', '', 
                               'dep1', 'dep2', 'dep3', 'dep4', 
@@ -179,7 +191,7 @@ save_semgraph <- function(model, n_ocs, name) {
   } else { cat('Too few occasions!\n') }
   
   # Remove edges estimated or set to 0.00 for readability
-  e = get_edges(model); e$show[e$label=='0.00'] <- F
+  e = get_edges(model); e$show[e$label=='0.00'] <- FALSE
   # Create graph 
   p = tidySEM::graph_sem(model = model, layout = lay, edges=e)
   # Save image
@@ -188,9 +200,11 @@ save_semgraph <- function(model, n_ocs, name) {
 
 ## Fit a single SEM model (used in run_model)
 run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name) {
+  cat('- ', which(names(mat)==mod), mod)
   # Run model
+  set.seed(310896)
   m <- lavaan::sem(formula(dep_temp, cmr_temp, mod), data, missing='fiml', se ='robust',
-                   verbose=T) #, bootstrap = 1000)
+                   verbose=FALSE)
   
   if (lavInspect(m, "converged")){
     # Print out the layout 
@@ -203,7 +217,7 @@ run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name) {
 }
 
 ## Run the analyses! 
-run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=names(mat), verbose=F){
+run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=names(mat), verbose=FALSE){
   # Make dataframe
   d <- make_df(dep_name, dep_times, cmr_name, cmr_times, verbose=verbose)
   if (verbose) { print(summary(d$data)) }
@@ -214,18 +228,19 @@ run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=nam
   dat_summ <- cbind(dep_summ, cmr_summ) 
   dat_summ <- rbind(dat_summ, 'N_obs'= nrow(data) - dat_summ["NA's",])
   
-  cat('\n---------------------------------------\nFitting the models...')
+  cat('\n------------------------------------------------------\n',cmr_name,' ~ ',dep_name)
+  cat('\n------------------------------------------------------\nFitting the models...')
   
   # stat_seq <- c(T, rep(F, 2)) # ncol(mat)-1)) # Stationary is true in the full models but false in all others
   
   # Run this bitch (in parallel)
-  start <- Sys.time(); cat(' started at: ', start)
-  fits <- parallel::mcmapply('run_sem', mod=which_models,
+  start <- Sys.time(); cat(' started at: ', as.character(start), '\n') 
+  fits <- mapply(run_sem, mod=which_models, # parallel::mc
                  MoreArgs=list(data=d$data, dep_temp=d$dep_time, cmr_temp=d$cmr_time, dep_name=dep_name, cmr_name=cmr_name), 
-                 SIMPLIFY=F) # , mc.cores=12)
+                 SIMPLIFY=FALSE) # mc.cores=12)
   end <- Sys.time()
   
-  cat('\nDone! Runtime: ',round(end - start, 2),' hours\n---------------------------------------\n')
+  cat('\nDone! Runtime: ',round(end - start, 2),' hours\n------------------------------------------------------\n')
   
   # Initialize output dataframes
   fit_meas = data.frame(matrix(nrow = 55, ncol = 0)); estimates = data.frame(); failed = data.frame()
@@ -255,43 +270,121 @@ run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=nam
 # -------------------------------- Analysis ------------------------------------
 # ==============================================================================
 
-# Self-reported depression =====================================================
+models <- list(
+  # Self-reported depression ===================================================
+  # – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
+  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+  #      'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)), # there is 17 too
+  # 
+  # # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
+  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+  #      'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  # 
+  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+  #   'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  
+  # - total lean mass/ LMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+       'LMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+   'total_leanmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  
+  # # – waist circumference: 10 – 13 – 16 – 14/25
+  # list('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
+  #      'waist_circ', c(10.6, 12.8, 15.4, 24.5)),
+  
+  # Android fat mass 
+  list('sDEP_score', c(13.8, 16.6, 17.8, 23.8),
+  'android_fatmass', c(13.8, 15.4, 17.8, 24.5)),
+  
+  # Metabolic markers 
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'tot_chol',   c( 9.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'HDL_chol',   c( 9.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'LDL_chol',   c( 9.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'insulin',    c( 9.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'triglyc',    c( 9.8, 15.4, 17.8, 24.5)),
+  
+  list('sDEP_score', c(10.6, 16.6, 17.8, 23.8),
+       'CRP',        c( 9.8, 15.4, 17.8, 24.5)),
+  
+  # Blood pressure, PWV and heart rate and glucose have three occasions...
+  
+  # Mother reported ==============================================================
+  # – BMI: 10 – 12 – 13 – 16  # (with mean BMI 15.5 – 18) 
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'BMI',        c(9.8, 11.8, 12.8, 16)), # there is 17 too but lower correlation (0.2 vs. 0.4)
+
+  # – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18)
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'FMI',        c(9.8, 11.8, 13.8, 17.8)),
+
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+    'total_fatmass', c(9.8, 11.8, 13.8, 17.8)),
+
+  # – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'LMI',        c(9.8, 11.8, 13.8, 17.8)),
+
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+   'total_leanmass', c(9.8, 11.8, 13.8, 17.8)),
+  
+  # – waist circumference: 10 – 12 – 13 – 16
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'waist_circ', c(9.8, 11.8, 12.8, 15.4))
+)
+
+foreach(i=1:length(models)) %dopar% {
+  param = models[[i]]
+  run_model(param[[1]], param[[2]], param[[3]], param[[4]])
+}
+
+
 # – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
-run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-          'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)) # there is 17 too
-
-# - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
-run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-          'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
-
-# Take it from here
-run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-       'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
-
-# – waist circumference: 10 – 13 – 16 – 14/25
-run_model('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
-          'waist_circ', c(10.6, 12.8, 15.4, 24.5))
+# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+#           'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)) # there is 17 too
+# 
+# # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
+# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+#           'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
+# 
+# # Take it from here
+# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+#        'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
+# 
+# # – waist circumference: 10 – 13 – 16 – 14/25
+# run_model('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
+#           'waist_circ', c(10.6, 12.8, 15.4, 24.5))
 
 # Mother reported ==============================================================
 # – BMI: 10 – 12 – 13 – 16  # (with mean BMI 15.5 – 18) 
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-          'BMI',        c(9.8, 11.8, 12.8, 16)) # there is 17 too but lower correlation (0.2 vs. 0.4)
-
-# – waist circumference: 10 – 12 – 13 – 16
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-          'waist_circ', c(9.8, 11.8, 12.8, 15.4))
-
-# – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18) 
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-          'FMI',        c(9.8, 11.8, 13.8, 17.8))
-
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-       'total_fatmass', c(9.8, 11.8, 13.8, 17.8))
-
-# – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-          'LMI',        c(9.8, 11.8, 13.8, 17.8))
-
-run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-      'total_leanmass', c(9.8, 11.8, 13.8, 17.8))
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#           'BMI',        c(9.8, 11.8, 12.8, 16)) # there is 17 too but lower correlation (0.2 vs. 0.4)
+# 
+# # – waist circumference: 10 – 12 – 13 – 16
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#           'waist_circ', c(9.8, 11.8, 12.8, 15.4))
+# 
+# # – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18) 
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#           'FMI',        c(9.8, 11.8, 13.8, 17.8))
+# 
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#        'total_fatmass', c(9.8, 11.8, 13.8, 17.8))
+# 
+# # – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#           'LMI',        c(9.8, 11.8, 13.8, 17.8))
+# 
+# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+#       'total_leanmass', c(9.8, 11.8, 13.8, 17.8))
 # ==============================================================================
