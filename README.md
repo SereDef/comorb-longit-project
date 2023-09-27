@@ -1,5 +1,8 @@
-# comorb-longit-project
-Longitudinal modelling of the co-development of depression and cardio-metabolic risk from childhood to young adulthood. The study is based on data from the ALSPAC study.
+# <ins>Dash application</ins>
+
+**Longitudinal modelling of the co-development of depression and cardio-metabolic risk from childhood to young adulthood**
+
+The study is based on data from the ALSPAC study.
 
 This repo includes: 
   

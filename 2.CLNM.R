@@ -127,7 +127,7 @@ for (v in row.names(m)){
   }
 }
 
-des = m[c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
+des = m # [c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
 
 start_time <- Sys.time()
 umod <- psychonetrics::panelgvar(data, vars = des, # lambda=
@@ -138,11 +138,13 @@ umod <- psychonetrics::panelgvar(data, vars = des, # lambda=
   psychonetrics::runmodel() # run unpruned 
 Sys.time() - start_time
 
+save(umod, file='../results/mod2/unpruned.RData')
+
 ms = c('beta', 
   'omega_zeta_within', 'delta_zeta_within','sigma_epsilon_within',
   'omega_zeta_between','delta_zeta_between','sigma_epsilon_between')
 
-pdf('res_t13_v6.pdf')
+pdf('CIplot_2200923.pdf')
 CIplot(umod, ms) 
 dev.off()
 
@@ -419,6 +421,7 @@ run_net <- function(times, mean_times='',
   
   # Layout
   layout <- gra$layout
+  row.names(layout) <- gra$graphAttributes$Nodes$names
   
   # Save output
   if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
@@ -446,6 +449,8 @@ cn21.9 <- run_net(times = c('21.9y')) # note: depression only
 cn22.9 <- run_net(times = c('22.9y')) # note: depression only 
 
 cn24.1 <- run_net(times = c('23.8y','24.5y'))
+
+# averageLayout(cn24.1, cn22.9)
 
 # cor_auto detects ordinal variables (with up to 7 unique integer values) and uses
 # lavaan to estimate polychoric, polyserial and Pearson correlations.
