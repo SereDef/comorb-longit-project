@@ -22,16 +22,16 @@ sel <- function(var, times=NULL){
 
 # Helper -----------------------------------------------------------------------
 # Select subset of timepoints
-sub <- data[, sel(c('9.8y','10.6y','10.7y','11.8y', # T1
-                    '17.8y','15.4y',                # T2
-                    '23.8y','24.5y'))]              # T3
-# Quickly check the available timepoints and counts per variable 
-check <- function(var) {
-  message(var, '\nCOUNT:')
-  print(sapply(sub[,grep(var, names(sub))], function(x) sum(!is.na(x)) ))
-  message('SUMMARY')
-  print(summary(sub[,grep(var, names(sub))]))
-}
+# sub <- data[, sel(c('9.8y','10.6y','10.7y','11.8y', # T1
+#                     '17.8y','15.4y',                # T2
+#                     '23.8y','24.5y'))]              # T3
+# # Quickly check the available timepoints and counts per variable 
+# check <- function(var) {
+#   message(var, '\nCOUNT:')
+#   print(sapply(sub[,grep(var, names(sub))], function(x) sum(!is.na(x)) ))
+#   message('SUMMARY')
+#   print(summary(sub[,grep(var, names(sub))]))
+# }
 
 # Order alphabetically (i.e. per variable, per timepoint)
 # sort(gsub('_9.8', '_09.8', colnames(sub)))
@@ -87,7 +87,7 @@ var_names = c(paste0('sDEP', sprintf('%02d', 1:13)),
          # 'height', 'weight'
          'BMI',
          'waist_circ',
-         # 'waist_hip_ratio', # ralted to waist_circ
+         # 'waist_hip_ratio', # ralated to waist_circ
          # 'total_fatmass', # index to height
          # 'total_leanmass', # index to height
          'FMI',
@@ -148,6 +148,8 @@ pdf('CIplot_2200923.pdf')
 CIplot(umod, ms) 
 dev.off()
 
+# ==============================================================================
+
 # removed: 'alcohol','canabis','smoking','android_fatmass','FS','glucose','heart_rate','IMT','LVM','RWT', # only at 18 and 24
 # 'IL_6', # only at 10
 # 'liver_fat', # only at 24 (earlier binary variable)
@@ -155,41 +157,123 @@ dev.off()
 # 'CMR_age', 'DEP_age', 'DEP_score','TFI','height',
 # 'fatmass','leanmass', 'weight', # using vars indexed to height
 
+# ==============================================================================
+
 names = c('felt\nmiserable\nor unhappy',
-          'did not\nenjoy\nanything', 
+          'did not\nenjoy\nanything',
           'so tired\njust sat\naround',
           'was very\nrestless',
-          'felt they\nwere no good\nanymore', 
-          'cried\na lot', 
-          'hard to\nthink or\nconcentrate', 
+          'felt they\nwere no good\nanymore',
+          'cried\na lot',
+          'hard to\nthink or\nconcentrate',
           'hated\nthemselves',
-          'felt they\nwere a\nbad person', 
-          'felt\nlonely',  
-          'nobody\nreally loved\nthem', 
-          'never\nas good as\nothers', 
+          'felt they\nwere a\nbad person',
+          'felt\nlonely',
+          'nobody\nreally loved\nthem',
+          'never\nas good as\nothers',
           'felt did\neverything\nwrong',
-          
           'Body mass\nindex (BMI)',
-          'Fat mass\nindex (FMI)',
-          'Lean mass\nindex (LMI)',
           'Waist\ncircumference',
+          'Fat mass\nindex (FMI)', # 'Lean mass\nindex (LMI)',
+          'Android fat mass',
           'DBP',
           'SBP',
           'Pulse wave\nvelocity',
+          'IMT',
           'HDL\ncholesterol',
           'LDL\ncholesterol',
-          'Insulin', 
+          'Insulin',
           'Triglycerides',
+          'Glucose',
           'C-reactive\nprotein')
 
+load('/Users/Serena/Desktop/panel_network/results/mod2/unpruned_220923.RData')
+
+# Get fit measures
+ufit <- umod@fitmeasures
+
+write.csv(ufit)
+
+named_matrix <- function(model, type, rename=var_names){
+  # type gets values = 'PDC' (namedTemporal), 'omega_zeta_within' (namedContemporaneous),
+  # 'omega_zeta_between' (namedBetween)
+  mat <- psychonetrics::getmatrix(model, type) # extract an estimated matrix from model
+  rownames(mat) <- colnames(mat) <- rename
+  return(mat)
+}
+
+# Get three networks
+t_mat <- named_matrix(umod, 'PDC') # Temporal 
+c_mat <- named_matrix(umod, 'omega_zeta_within') # Contemporaneous
+b_mat <- named_matrix(umod, 'omega_zeta_between') # Between
+
+layout <- qgraph::averageLayout(t_mat, c_mat, b_mat, layout = "spring")
+# write.csv(layout, '../results/mod2/layout.csv')
+
+plotnets <- function(network, title, filename, groups=c(rep('dep',13), rep('cmr',14))) {
+  
+  g <- qgraph::qgraph(network, title=title,
+              labels=names, 
+              threshold=0.01,
+              theme = "colorblind", 
+              repulsion = 0.7, 
+              maximum = 1, 
+              layout= 'spring',# layout, 
+              groups = groups, 
+              color = c('#FFEAF5','#E1EDFF'),
+              vsize = 8, 
+              label.scale.equal=T,
+              vsize2=7,
+              shape ='ellipse',
+              border.width=0.5,
+              label.cex = 1.1, legend = FALSE,
+              filetype='png', 
+              filename=file.path('/Users/Serena/Desktop/panel_network/results/mod2/',filename))
+  
+  return(g)
+}
+
+t = plotnets(t_mat, 'Temporal network', 't_plot')
+b = plotnets(b_mat, 'Between-person network', 'b_plot')
+c = plotnets(c_mat, 'Contemporaneous network', 'c_plot')
+
+descript <- function(matrix, type='crossNet') {
+  if (type=='crossNet') { vector <- as.vector(gdata::lowerTriangle(matrix)) } else { vector <- as.vector(matrix) }
+  estimates <- vector[vector !=0]
+  descriptives <- round(psych::describe(estimates),3)
+  return(t(descriptives))
+}  
+
+# Parameter descriptives
+desc <- data.frame(descript(t_mat, type='temporal'), descript(c_mat), descript(b_mat))
+names(desc) <- c('temp','cont','betw')
+
+desc = t(desc)
+
+# Centrality indices df
+t_cent <- qgraph::centrality_auto(t_mat)$node.centrality
+c_cent <- qgraph::centrality_auto(c_mat)$node.centrality
+b_cent <- qgraph::centrality_auto(b_mat)$node.centrality
+
+
+# Pruned adjacency matrices
+# t_adjacency <- 1*(psychonetrics::getmatrix(pmod, 'beta')!=0)
+# b_adjacency <- 1*(psychonetrics::getmatrix(pmod, 'omega_zeta_between')!=0)
+# c_adjacency <- 1*(psychonetrics::getmatrix(pmod, 'omega_zeta_within')!=0)
+
+
+try = round(c_mat, 2)
+
+
+try2 = 1*(c_mat!=1)
 # ---------------------------------------------------------------------------
 # Remove sex for now
-d = df[,-1]
-
-nT = 3 # number of timepoints 
-nS = ncol(d) # number of symptoms/markers
-# Design matrix with nT columns and nS rows
-des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = TRUE) 
+# d = df[,-1]
+# 
+# nT = 3 # number of timepoints 
+# nS = ncol(d) # number of symptoms/markers
+# # Design matrix with nT columns and nS rows
+# des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = TRUE) 
 
 # Unpruned model, get fit
 # panelgvar() specifies a graphical vector-autoregression (GVAR) model on panel data
@@ -198,16 +282,16 @@ des <- matrix(as.vector(colnames(d)), nrow=nS/nT, byrow = TRUE)
 # This allows for the fixed-effects decomposition into temporal, contemporaneous, and between-subjects networks. 
 # NOTE: when full-information maximum likelihood (FIML) estimation is used, the panel data model is a multi-level GVAR model 
 # (as implemented in mlVAR) with only random intercepts (no random network parameters). 
-start_time <- Sys.time()
-umod <- psychonetrics::panelgvar(d, vars = des, # lambda=
-                                 # missing ='pairwise', 
-                                 estimator ='FIML', 
-                                 # optimizer = 'nlminb',
-                                 verbose = TRUE) %>% 
-  psychonetrics::runmodel() # run unpruned 
-Sys.time() - start_time
-
-save(umod, file='../results/mod2/unpruned.RData')
+# start_time <- Sys.time()
+# umod <- psychonetrics::panelgvar(d, vars = des, # lambda=
+#                                  # missing ='pairwise', 
+#                                  estimator ='FIML', 
+#                                  # optimizer = 'nlminb',
+#                                  verbose = TRUE) %>% 
+#   psychonetrics::runmodel() # run unpruned 
+# Sys.time() - start_time
+# 
+# save(umod, file='../results/mod2/unpruned.RData')
 # Warning messages:
 #   1: In doTryCatch(return(expr), name, parentenv, handler) :
 #   restarting interrupted promise evaluation
@@ -231,14 +315,6 @@ prunedparameters <- pruned %>% psychonetrics::parameters()
 # When time series of multiple subjects are available, a third GGM can be formed on the between-subject effects 
 # (relationships between stable means)—also termed the between-subject network.
 
-namedMatrix <- function(model, vrbls, type){
-  # type gets values = 'PDC' (namedTemporal), 
-  # 'omega_zeta_within' (namedContemporaneous),
-  # 'omega_zeta_between' (namedBetween)
-  mat <- psychonetrics::getmatrix(model, type) # extract an estimated matrix from model
-  rownames(mat) <- colnames(mat) <- vrbls
-  return(mat)
-}
 
 # Get three networks
 prunedtemporal <- namedMatrix(pruned, names, 'PDC')
