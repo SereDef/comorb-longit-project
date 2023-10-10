@@ -7,7 +7,7 @@ import dash_cytoscape as cyto
 
 import pandas as pd
 
-from backend_funcs import get_label, desc_plot, model_structure, all_desc, age_desc, plot_overview, read_res1, best_fit1, make_plot1, make_net1, stylenet1, make_table1, read_res3, timemarks3, make_net3, stylenet3
+from backend_funcs import get_label, desc_plot, model_structure, all_desc, age_desc, plot_overview, read_res1, best_fit1, make_plot1, make_net1, stylenet1, make_table1, make_net2, make_netstyle2, make_tab2, read_res3, timemarks3, make_net3, stylenet3
 
 
 def badge_it(text, color):
@@ -95,7 +95,7 @@ def render_content(tab):
             html.Hr(),
             dcc.Graph(id='overview-fig', figure = plot_overview()),
             # html.Div( html.Img(src=get_asset_url('timeline.png'), style={'width':'100%'})),
-            dbc.Row( dbc.Col( [html.Img(src=get_asset_url('samplesizes.png'))], width={'size': 10, 'offset': 1}))
+            # dbc.Row( dbc.Col( [html.Img(src=get_asset_url('samplesizes.png'))], width={'size': 10, 'offset': 1}))
         ])
         
     elif tab == 'tab-1': # ==============================================================================================
@@ -159,10 +159,53 @@ def render_content(tab):
             html.Br(),
             html.Div(['Results of the', bold_it('cross-lag network analyis'), 'performed using the variables listed below.']),
             html.Hr(),
-            html.Div( [html.Img(src=get_asset_url('tempPlot.png'), style={'width':'33%'}),
-                       html.Img(src=get_asset_url('contempPlot.png'), style={'width':'33%'}),
-                       html.Img(src=get_asset_url('betweenPlot.png'), style={'width':'33%'})])
-            # dbc.Row( dbc.Col( [html.Img(src=get_asset_url('samplesizes.png'))], width={'size': 10, 'offset': 1}))
+            dbc.Row([
+                dbc.Col([ # Temporal network
+                    html.H4('Temporal (within-person) network'),   
+                    cyto.Cytoscape(id='temp-net', layout={'name':'preset'},
+                          style={'width':'30%', 'height':'60%', 'position':'absolute', 'left':150, 'top':350, 'z-index':999},
+                          minZoom=1, maxZoom=1, # reduce the range of user zooming 
+                          elements = make_net2('t'), 
+                          stylesheet= make_netstyle2('t') ) ], width=4),
+                dbc.Col([ # Contemporaneous network
+                    html.H4('Contemporaneous (within-person) network', style={'textAlign':'center'}),
+                    cyto.Cytoscape(id='cont-net', layout={'name':'preset'},
+                          style={'width':'30%', 'height':'60%', 'position':'absolute', 'left':850, 'top':350, 'z-index':999},
+                          minZoom=1, maxZoom=1, # reduce the range of user zooming 
+                          elements = make_net2('c'), 
+                          stylesheet= make_netstyle2('c') )], width=4),
+                dbc.Col([ # Between person network
+                    html.H4('Contemporaneous (between-person) network', style={'textAlign':'right'}),
+                    dash_table.DataTable(id='temp-ci-tab', columns=[ {'name': i, 'id': i} for i in make_tab2('t') ],
+                                               sort_action='custom', sort_mode='single', sort_by=[], 
+                                               fixed_columns={'headers': True, 'data': 1}, # Fix node name column 
+                                               # style_as_list_view=True, # Remove vertical lines between columns 
+                                               style_header={'fontWeight':'bold'},
+                                               style_cell={'fontSize':20, 'font-family':'sans-serif'},
+                                               style_cell_conditional=[{'if': {'column_id': 'Node'}, 'width': '250px'}],
+                                               style_data={'whiteSpace':'normal', 'height': 'auto','lineHeight':'20px', 
+                                                           'minWidth': '100px', 'width': '100px', 'maxWidth': '100px'}, 
+                                               style_table={'overflowX': 'auto', 'minWidth': '100%'})
+                    # cyto.Cytoscape(id='betw-net', layout={'name':'preset'},
+                    #       style={'width':'30%', 'height':'60%', 'position':'absolute', 'left':1550, 'top':350, 'z-index':999},
+                    #       minZoom=1, maxZoom=1, # reduce the range of user zooming 
+                    #       elements = make_net2('b'), 
+                    #       stylesheet= make_netstyle2('b') )
+                ], width=4)
+            ]),
+            # dbc.Row([
+            #     dbc.Col([dash_table.DataTable(id='temp-ci-tab', columns=[ {'name': i, 'id': i} for i in make_tab2('t') ],
+            #                                    sort_action='custom', sort_mode='single', sort_by=[], 
+            #                                    fixed_columns={'headers': True, 'data': 1}, # Fix node name column 
+            #                                    # style_as_list_view=True, # Remove vertical lines between columns 
+            #                                    style_header={'fontWeight':'bold'},
+            #                                    style_cell={'fontSize':20, 'font-family':'sans-serif'},
+            #                                    style_cell_conditional=[{'if': {'column_id': 'Node'}, 'width': '250px'}],
+            #                                    style_data={'whiteSpace':'normal', 'height': 'auto','lineHeight':'20px', 
+            #                                                'minWidth': '100px', 'width': '100px', 'maxWidth': '100px'}, 
+            #                                    style_table={'overflowX': 'auto', 'minWidth': '100%'})])
+            # ])
+             
         ])
      
     elif tab == 'tab-3': # ==============================================================================================
@@ -177,14 +220,12 @@ def render_content(tab):
             dbc.Row([
                 # Network
                 dbc.Col([cyto.Cytoscape(id='cros-net', layout={'name':'preset'},
-                          style={'width':'50%', 'height':'100%', 'position':'absolute', 'left':150, 'top':370, 'z-index':999},
+                          style={'width':'40%', 'height':'80%', 'position':'absolute', 'left':150, 'top':380, 'z-index':999},
                           minZoom=1, maxZoom=1, # reduce the range of user zooming 
                           elements = make_net3(9.7)[0], 
                           stylesheet= stylenet3)], width=6), 
                 # Table
                 dbc.Col([ html.Br(),
-                          # dbc.Popover(id='pop', children=dbc.PopoverBody('okok'), target='cros-net', trigger='click'),
-                          html.Pre(id='display-labels'),
                           dash_table.DataTable(id='ci-table', columns=[ {'name': i, 'id': i} for i in make_net3(9.7)[1].columns ],
                                                sort_action='custom', sort_mode='single', sort_by=[], 
                                                fixed_columns={'headers': True, 'data': 1}, # Fix node name column 

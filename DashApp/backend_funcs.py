@@ -133,10 +133,15 @@ def desc_plot(var):
 
 age_desc = all_desc[list(all_desc.columns[all_desc.columns.str.contains('age')])]
 
-def plot_overview(width=1900, height=900):
+def plot_overview(width=1900, height=1000, exclude_cmr = ['BMI','FMI','LMI','TFI','alcohol','canabis','smoking']):
+    '''Input: dimentions (optional).
+       Creates an interactive scatterplot figure with time of measurement on the x-axis and all measures on the y-axis. 
+       Markers indicate the median age at measurement [+/- 95% CI in age range]. These values + number of observations are also displayed when hovering over the points.
+    '''
     fig = make_subplots(2,1, vertical_spacing=0.05, row_heights=[13*2, 25*2])
 
-    colors = {'sDEP':'71, 107, 237', 'mDEP':'148, 103, 189','CMR':'214, 39, 40'}
+    colors = {'sDEP':'71, 107, 237', 'mDEP':'148, 103, 189','CMR':'214, 39, 40'} # blue, purple and red 
+    legend = {'sDEP':'Depression\nself-reports', 'mDEP':'Depression\nmaternal reports','CMR':'Cardio-metabolic\nrisk markers'}
     
     def scat(vartype):
         # Get ages of measurement from age_desc 
@@ -144,8 +149,9 @@ def plot_overview(width=1900, height=900):
         
         if vartype=='CMR':
             # Extract variable names from labels (only keeping those of interest)
-            cmrkeys = [i for i in list(labels.keys())[14:] if i not in ['BMI','FMI','LMI','TFI','alcohol','canabis','smoking']]
-        
+            cmrkeys = [i for i in list(labels.keys())[14:] if i not in exclude_cmr]
+            
+            # Specify their label (including manually combining some measures into one row) 
             cmrlab = {k:labels[k] for k in cmrkeys if k in labels}
             cmrlab['weight'] = 'Weight / BMI'
             cmrlab['total_fatmass'] = 'Total fat mass / FMI'
@@ -153,25 +159,37 @@ def plot_overview(width=1900, height=900):
             
             names = list(cmrlab.values())
         else:
-            names = list(labels.values())[0:13]
-            
+            names = list(labels.values())[0:13] # depression items 1-13
+
+        # Create grid of values and ranges
         x, y = [i.flatten() for i in np.meshgrid(df.loc['50%'], names)]
-        x_min,_ = np.meshgrid(df.loc['25%'], names)
-        x_max,_ = np.meshgrid(df.loc['75%'], names)
-    
+        x_min,_ = np.meshgrid(df.loc['5%'], names)
+        x_max,_ = np.meshgrid(df.loc['95%'], names)
+
+        # The CMR grid will need to contain some "NA" (and so do the counts)
         if vartype=='CMR': 
-            ages = [i[-1][:-1] for i in df.columns.str.split('_')]
+            ages = [i[-1][:-1] for i in df.columns.str.split('_')] # get age without 'y'
     
             cmrmat = pd.DataFrame(columns=ages, index=cmrlab.keys())
-    
+            counts = cmrmat.copy()
+            
             for age in ages:
+                # what measures are available at that age
                 t = all_desc[list(all_desc.columns[all_desc.columns.str.contains(age) & ~(all_desc.columns.str.contains('DEP|age'))])]
-                meas = [x.split('_'+age)[0] for x in t.columns if x.split('_'+age)[0] not in ['BMI','FMI','LMI','TFI','alcohol','canabis','smoking']]
+                meas = [x.split('_'+age)[0] for x in t.columns if x.split('_'+age)[0] not in exclude_cmr]
+                nobs = [  t.loc['count', x] for x in t.columns if x.split('_'+age)[0] not in exclude_cmr]
                 
                 cmrmat.loc[meas, age] = [cmrlab[m] for m in meas]
+                counts.loc[meas, age] = [int(c) for c in nobs]
                 
             y = list(cmrmat.stack(future_stack=True))
+            counts = list(counts.stack(future_stack=True))
         
+        else: 
+            counts = []
+            for i in [vartype[0] + s for s in list(labels.keys())[0:13] ]:
+                counts.extend( [int(c) for c in list(all_desc.loc['count', list(all_desc.columns[all_desc.columns.str.contains(i)])])] )
+            
         p = go.Scatter(x = x, y = y, mode='markers',
                        marker = dict(size = 10, symbol = 'square', color=f'rgb({colors[vartype]})', opacity = .9),
                        error_x = dict(type='data', symmetric=False,
@@ -179,11 +197,9 @@ def plot_overview(width=1900, height=900):
                                       arrayminus= x - x_min.flatten(),
                                       color=f'rgba({colors[vartype]}, 0.3)', # use this for opacity 
                                       thickness=10, width=0),
-                       name = vartype
-                      )
-                           # name = fullname, text = [f'{shortname} {n}' for n in range(1,len(t)+1)],
-                           # marker = dict(size = 10, symbol = 'square',opacity = .8), opacity = .7,
-                           # hovertemplate = """ <b>%{text}</b> <br> Median: %{y:.2f} <br> Timepoint: %{x} years <br><extra></extra>""")
+                       name=legend[vartype],
+                       text=[f'{round(i,1)}-{round(j,1)}' for i,j in zip(x_min.flatten(), x_max.flatten() )], customdata = [f'{i}' for i in counts],
+                       hovertemplate = """ <b>%{y}</b> <br> %{x:.1f} [%{text}] years <br> <i>N =</i> %{customdata} <br><extra></extra>""" )
         return p
     
     fig.add_trace(scat('sDEP'), 1,1)
@@ -201,7 +217,7 @@ def plot_overview(width=1900, height=900):
     
     for g in cmrgroups:
         y1 = y0 + cmrgroups[g][0]
-        cmrgrouplabels.append(dict(x0 = -0.15, x1 = -0.155, xref='paper',
+        cmrgrouplabels.append(dict(x0 = -0.125, x1 = -0.13, xref='paper',
                               y0 = y0, y1 = y1-0.25, yref='y2', 
                               type='rect', fillcolor=cmrgroups[g][1], opacity=.3, line_width=0,
                               label=dict(text=f'<b>{g}    </b>', textposition='top right', padding=2)
@@ -216,7 +232,9 @@ def plot_overview(width=1900, height=900):
     
     fig.update_layout(autosize=False, width=width, height=height,
                       yaxis1 = dict(range=(12.7, -0.7)), yaxis2 = dict(range=(24.7,-0.7),), xaxis2= dict(title='Child age (years)'),
-                      shapes=cmrgrouplabels, plot_bgcolor='white', margin=dict(l=20, r=20, t=20, b=20))
+                      shapes=cmrgrouplabels, plot_bgcolor='white', margin=dict(l=20, r=20, t=20, b=20), 
+                      legend=dict(orientation='h', entrywidth=300, font=dict(size=16),
+                                  yanchor='bottom', y=1.02, xanchor='left', x=0) )
     
     return fig
 
@@ -501,10 +519,85 @@ def make_table1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_c
     
     return(dt)
 
-# ---- Tab 2: cross-lagged panel network model ----------------------------------------------------
+# ---- Tab 2: cross-lagged panel network model ---------------------------------------------------
 # -------------------------------------------------------------------------------------------------
 
-# TODO: extract the layout and specify it make_net2
+def read_res2(which_net, path=PATH+'mod2/'):
+    '''Input: temporal/contemp/between person network input. 
+       Open the .RData file created by Rscript 2.CLNPM. This contains the following elements:
+       - fit: fit measures + number of observations the network is based on.
+       - layout: the spring graphical disposition computed by `qgraph`
+       - t_net/c_net/b_net: dataframe with all edge weights
+       - t_cent/c_cent/b_cent:: 95% confidence intervals for those weights
+       Use: fit, lay, wm, ci = read_res2(t')
+    '''
+    res = pyreadr.read_r(f'{path}unpruned.RData')
+    
+    fit = res['fit'] # [[]]
+    
+    # layout computed by qgraph (spring algorithm) 
+    lay = res['layout'].rename(columns={0:'x_og',1:'y_og'})
+    # rescale to pixels 
+    lay['x'] = np.interp(lay['x_og'], (lay['x_og'].min(), lay['x_og'].max()), (0, 500))
+    lay['y'] = np.interp(lay['y_og'], (lay['y_og'].min(), lay['y_og'].max()), (0, 500))
+    # add class 
+    lay['class'] = ['dep' if t else 'cmr' for t in lay.index.str.contains('DEP')]
+
+    nw = res[f'{which_net}_net']
+    nw['from'] = nw['from'].map({ x : lay.index[x-1] for x in nw['from'] })
+    nw['to'] = nw['to'].map({ x : lay.index[x-1] for x in nw['to'] })
+    nw['dir'] = ['neg' if x<0 else 'pos' for x in nw.weight]
+    
+    ci = res[f'{which_net}_cent']
+    
+    return fit, lay, nw, ci
+
+def make_tab2(which_net):
+    '''Input: network type (temporal, contemporaneous or between person).
+       Creates the table with centrality indices tab.
+    '''
+    ci = read_res2(which_net)[3] # read in data 
+
+    # Centrality indices tab
+    ci_tab = ci.round(2)
+    ci_tab.insert(1, 'Node', [get_label(name) for name in ci_tab.index]) # Replace node name with its label 
+
+    return ci_tab
+    
+def make_net2(which_net):
+    '''Input: network type (temporal, contemporaneous or between person). 
+       Creates a network structure.
+    '''
+    fit,lay,nw,_ = read_res2(which_net) # read in data 
+    
+    # already trimmed estimates
+    nodes = [{'data': {'id':node, 'label': '\n'.join(textwrap.wrap(get_label(node), width=20))}, 'classes':lay.loc[node,'class'], 
+             'position':{'x':lay.loc[node,'x'], 'y':lay.loc[node,'y'] }} 
+       for node in lay.index ]
+    
+    edges = [{'data': {'source':a, 'target':b, 'weight':round(abs(w)*10,3), 'width':round(abs(w)*10,2)}, 'classes':c} 
+       for a,b,w,c in nw.itertuples(index=False)]
+    
+    network = nodes+edges
+
+    return network 
+
+def make_netstyle2(which_net):
+    
+    sn2 = [ {'selector': 'node', 'style': {'label': 'data(label)', 'text-wrap':'wrap'} },
+           # Edge opacty and width
+           {'selector': 'edge', 'style': {'opacity': 'data(weight)', 'width': 'data(width)'}},
+           # Color nodes by group
+           {'selector': '.dep', 'style': {'background-color': 'lightblue'} },
+           {'selector': '.cmr', 'style': {'background-color': 'pink'} },
+           # Color edges by positive/negative weights
+           {'selector': '.neg', 'style': {'line-color': 'red', 'target-arrow-color':'red'} },
+           {'selector': '.pos', 'style': {'line-color': 'blue','target-arrow-color':'blue'} } ]
+    
+    if which_net=='t':
+        sn2 = sn2 + [{'selector': 'edge', 'style':{'curve-style':'straight', 'target-arrow-shape':'vee','arrow-scale':.8 }}]
+    
+    return sn2
 
 
 # ---- Tab 3: cross-sectional network models ------------------------------------------------------
@@ -517,7 +610,7 @@ def read_res3(time, path=PATH+'mod3/'):
        - ci: 95% confidence intervals for those weights
        - fit: fit measures + number of observations the network is based on.
        - layout: the spring graphical disposition computed by `qgraph`
-       Use: wm, ci, fit, lay = read_res3('9.8y-9.8y') -OR- summ = read_res1('sDEP','BMI')[0]
+       Use: wm, ci, fit, lay = read_res3('9.8y-9.8y')
     '''
     res = pyreadr.read_r(f'{path}crosnet_{time}y.RData')
     # weight matrix
