@@ -95,8 +95,6 @@ def render_content(tab):
             html.Div(['Overview of the data available from the', html.Span(' ALSPAC ', style={'font-weight':'bold'}), 'cohort.']),
             html.Hr(),
             dcc.Graph(id='overview-fig', figure = plot_overview()),
-            # html.Div( html.Img(src=get_asset_url('timeline.png'), style={'width':'100%'})),
-            # dbc.Row( dbc.Col( [html.Img(src=get_asset_url('samplesizes.png'))], width={'size': 10, 'offset': 1}))
         ])
         
     elif tab == 'tab-1': # ==============================================================================================
