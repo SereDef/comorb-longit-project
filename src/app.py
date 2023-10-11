@@ -67,6 +67,7 @@ def param_checklist(depname, cmrname, p='lt', best=False):
 
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.LITERA, dbc.icons.BOOTSTRAP], suppress_callback_exceptions=True)
+server = app.server
 
 app.layout = dbc.Container([
     # Title
