@@ -1,8 +1,8 @@
-library(foreign)
+require(foreign)
 
 # File name and location 
 filename <- 'EarlyCause_AHupdated_CIDB2957_21OCT21.sav' # change if needed
-datapath <- dirname(file.choose()) # volumes = X:/Psychology/ResearchProjects/EWalton/ (EarlyCause/WP3/SD/Data)
+datapath <- dirname(file.choose()) # volumes[...] (EarlyCause/WP3/SD/Data)
 
 # Read in the file
 full <- foreign::read.spss(file.path(datapath, filename), 
@@ -138,15 +138,15 @@ extr_cmr <- function(df, age){
 
 # 1	    Felt miserable or unhappy in the past 2 weeks
 # 2	    Didn't enjoy anything at all in the past 2 weeks
-# 3 	  Felt so tired they just sat around and did nothing in the past 2 weeks
+# 3   	Felt so tired they just sat around and did nothing in the past 2 weeks
 # 4	    Was very restless in the past 2 weeks
 # 5	    Felt they were no good any more in the past 2 weeks
 # 6	    Cried a lot in the past 2 weeks
 # 7	    Found it hard to think properly or concentrate in the past 2 weeks
 # 8     Hated themselves in the past 2 weeks
 # 9	    Felt they were a bad person in the past 2 weeks
-# 10	  Felt lonely in the past 2 weeks
-# 11	  Thought nobody really loved them in the past 2 weeks
+# 10    Felt lonely in the past 2 weeks
+# 11    Thought nobody really loved them in the past 2 weeks
 # 12	  Thought they would never be as good as other people in the past 2 weeks
 # 13	  Felt they did everything wrong in the past 2 weeks
 
@@ -154,7 +154,7 @@ extr_cmr <- function(df, age){
 # 2 Had fun; 8 Felt happy; 11 Enjoyed doing lots of things; 17 Had a good time; 18 Laughed a lot; 
 # 19 Looked forward to the day ahead; 20 Felt really positive about the future; 21 Felt valued; 22 Felt unhappy
 
-pdf('Histogr_data.pdf')
+pdf('histogr_data.pdf') # Note: saved in working directory :) 
 # ------------------------------------------------------------------------------
 mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') # tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
 

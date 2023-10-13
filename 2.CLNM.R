@@ -1,9 +1,6 @@
-library(psychonetrics)
-library(qgraph)
-library(dplyr)
-library(tidyr)
-library(psych)
-library(gdata)
+# Load dependencies
+invisible(lapply(c('psychonetrics','qgraph','dplyr','tidyr','psych','gdata'), require, 
+                 character.only = TRUE));
 
 data <- readRDS('../mats/raw_data.rds')
 
@@ -103,6 +100,14 @@ for (v in row.names(m)){
 
 des = m # [c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
 
+# ----------------- preprocessing: min-max normalization -----------------------
+
+normalize <- function(x, ...) {
+  return( (x - min(x,...)) / (max(x,...) - min(x,...)) )
+}
+
+normdata <- sapply(data[,-c(1,2)], normalize, na.rm = TRUE)
+
 # panelgvar() specifies a graphical vector-autoregression (GVAR) model on panel data
 # When using only observed variables in the network, the panel data model takes the form of a random intercept cross-lagged panel model, 
 # except the contemporaneous and between-subjects structures are modeled as networks. 
@@ -118,7 +123,7 @@ des = m # [c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
 # (relationships between stable means)—also termed the between-subject network.
 
 start_time <- Sys.time()
-umod <- psychonetrics::panelgvar(data, vars = des, # lambda=
+umod <- psychonetrics::panelgvar(normdata, vars = des, # lambda=
                                  # missing ='pairwise', 
                                  estimator ='FIML', 
                                  # optimizer = 'nlminb',
@@ -126,7 +131,7 @@ umod <- psychonetrics::panelgvar(data, vars = des, # lambda=
   psychonetrics::runmodel() # run unpruned 
 Sys.time() - start_time
 
-save(umod, file='../results/mod2/unpruned.RData')
+save(umod, file='../results/mod2/unpruned_norm.RData')
 
 ms = c('beta', 
   'omega_zeta_within', 'delta_zeta_within','sigma_epsilon_within',
@@ -137,10 +142,10 @@ CIplot(umod, ms)
 dev.off()
 
 # ==============================================================================
-load('/Users/Serena/Desktop/panel_network/results/mod2/unpruned_220923.RData')
+# load('/Users/Serena/Desktop/panel_network/results/mod2/unpruned_220923.RData')
 # ==============================================================================
 
-save_info <- function(modobj = umod, modname='unpruned', thresh=0.01) {
+save_info <- function(modobj = umod, modname='unpruned_norm', thresh=0.01, adjecency=FALSE) {
   # Get fit measures
   fit <- as.data.frame(modobj@fitmeasures)
   
@@ -198,117 +203,57 @@ save_info <- function(modobj = umod, modname='unpruned', thresh=0.01) {
   c_cent <- qgraph::centrality_auto(c_mat)$node.centrality
   b_cent <- qgraph::centrality_auto(b_mat)$node.centrality
   
+  if (adjecency) {
+    # pruned adjacency matrices
+    t_adja <- 1*(psychonetrics::getmatrix(modobj, 'beta')!=0)
+    b_adja <- 1*(psychonetrics::getmatrix(modobj, 'omega_zeta_between')!=0)
+    c_adja <- 1*(psychonetrics::getmatrix(modobj, 'omega_zeta_within')!=0)
+    # save to csv...?
+  }
+  
   save(fit, layout, t_net, c_net, b_net, 
                   t_cent, c_cent, b_cent, 
        file = paste0('../results/mod2/',modname,'.RData'))
 }
 
-
 save_info()
 
-# Plots ------------------------------------------------------------------------
-names = c('felt\nmiserable\nor unhappy',
-          'did not\nenjoy\nanything',
-          'so tired\njust sat\naround',
-          'was very\nrestless',
-          'felt they\nwere no good\nanymore',
-          'cried\na lot',
-          'hard to\nthink or\nconcentrate',
-          'hated\nthemselves',
-          'felt they\nwere a\nbad person',
-          'felt\nlonely',
-          'nobody\nreally loved\nthem',
-          'never\nas good as\nothers',
-          'felt did\neverything\nwrong',
-          'Body mass\nindex (BMI)',
-          'Waist\ncircumference',
-          'Fat mass\nindex (FMI)', # 'Lean mass\nindex (LMI)',
-          'Android fat mass',
-          'DBP',
-          'SBP',
-          'Pulse wave\nvelocity',
-          'IMT',
-          'HDL\ncholesterol',
-          'LDL\ncholesterol',
-          'Insulin',
-          'Triglycerides',
-          'Glucose',
-          'C-reactive\nprotein')
-
-plotnets <- function(network, title, filename, groups=c(rep('dep',13), rep('cmr',14))) {
-  
-  g <- qgraph::qgraph(network, title=title, threshold=0.005,
-              layout = layout, labels = var_names, 
-              theme = "colorblind", repulsion = 0.7, maximum = 1, 
-              groups = groups, color = c('#FFEAF5','#E1EDFF'),
-              vsize = 8, label.scale.equal=T, vsize2=7, shape ='ellipse',
-              border.width=0.5, label.cex = 1.1, legend = FALSE,
-              filetype='png', filename=file.path('../results/mod2/',filename))
-  
-  edges = as.data.frame(g[['Edgelist']][c('from','to','weight')])
-  
-  return(edges)
-}
-
-t = plotnets(t_mat, 'Temporal network', 't_plot')
-b = plotnets(b_mat, 'Between-person network', 'b_plot')
-c = plotnets(c_mat, 'Contemporaneous network', 'c_plot')
-
-descript <- function(matrix, type='crossNet') {
-  if (type=='crossNet') { vector <- as.vector(gdata::lowerTriangle(matrix)) } else { vector <- as.vector(matrix) }
-  estimates <- vector[vector !=0]
-  descriptives <- round(psych::describe(estimates),3)
-  return(t(descriptives))
-}  
-
-# Parameter descriptives
-desc <- data.frame(descript(t_mat, type='temporal'), descript(c_mat), descript(b_mat))
-names(desc) <- c('temp','cont','betw')
-
-desc = t(desc)
-
-# Centrality indices df
-t_cent <- qgraph::centrality_auto(t_mat)$node.centrality
-c_cent <- qgraph::centrality_auto(c_mat)$node.centrality
-b_cent <- qgraph::centrality_auto(b_mat)$node.centrality
-
-# ------------------------------------------------------------------------------
-# pruned model, get fit, parameters, and matrices
-pmod <- umod %>% psychonetrics::prune(recursive=T) # (recursively) remove parameters that are not significant and refit the model
-pfit <- pmod@fitmeasures
-pparams <- pmod %>% psychonetrics::parameters()
-
-# Get three networks
-t_mat <- named_matrix(pmod, 'PDC')  # Temporal 
-c_mat <- named_matrix(pmod, 'omega_zeta_within')  # Contemporaneous
-b_mat <- named_matrix(pmod, 'omega_zeta_between') # Between
-
-# Layout
-layout <- qgraph::averageLayout(t_mat, c_mat, b_mat, layout = "spring",)
-row.names(layout) <- var_names
-write.csv(layout, '../results/mod2/pruned_layout.csv')
-
-# Save pics
-t = plotnets(t_mat, 'Temporal network', 't_plot_pruned')
-b = plotnets(b_mat, 'Between-person network', 'b_plot_pruned')
-c = plotnets(c_mat, 'Contemporaneous network', 'c_plot_pruned')
-
-# Parameter descriptives
-desc <- data.frame(descript(t_mat, type='temporal'), descript(c_mat), descript(b_mat))
-names(desc) <- c('temp','cont','betw')
-desc = t(desc)
-
-# Pruned centrality indices
-t_cent <- qgraph::centrality_auto(t_mat)$node.centrality
-c_cent <- qgraph::centrality_auto(c_mat)$node.centrality
-b_cent <- qgraph::centrality_auto(b_mat)$node.centrality
-
-# pruned adjacency matrices
-prune.adjacencyT <- 1*(psychonetrics::getmatrix(pruned, 'beta')!=0)
-prune.adjacencyB <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_between')!=0)
-prune.adjacencyC <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_within')!=0)
-
 # ==============================================================================
+# pruned model, get fit, parameters, and matrices
+# pmod <- umod %>% psychonetrics::prune(recursive=T) # (recursively) remove parameters that are not significant and refit the model
+# 
+# save_info(modobj = pmod, modname='pruned', thresh=0.01, adjecency=TRUE)
+# 
+# pparams <- pmod %>% psychonetrics::parameters()
+# ==============================================================================
+
+# names = c('felt\nmiserable\nor unhappy',
+#           'did not\nenjoy\nanything',
+#           'so tired\njust sat\naround',
+#           'was very\nrestless',
+#           'felt they\nwere no good\nanymore',
+#           'cried\na lot',
+#           'hard to\nthink or\nconcentrate',
+#           'hated\nthemselves',
+#           'felt they\nwere a\nbad person',
+#           'felt\nlonely',
+#           'nobody\nreally loved\nthem',
+#           'never\nas good as\nothers',
+#           'felt did\neverything\nwrong',
+#           'Body mass\nindex (BMI)',
+#           'Waist\ncircumference',
+#           'Fat mass\nindex (FMI)', # 'Lean mass\nindex (LMI)',
+#           'Android fat mass',
+#           'DBP',
+#           'SBP',
+#           'Pulse wave\nvelocity',
+#           'IMT',
+#           'HDL\ncholesterol',
+#           'LDL\ncholesterol',
+#           'Insulin',
+#           'Triglycerides',
+#           'Glucose',
+#           'C-reactive\nprotein')
 
 # pruned invariance
 # genderComp <- df %>% tidyr::drop_na(sex)
@@ -379,84 +324,84 @@ prune.adjacencyC <- 1*(psychonetrics::getmatrix(pruned, 'omega_zeta_within')!=0)
 # =========== Cross-sectional network analysis (single timepoint) ==============
 # ==============================================================================
 
-library(qgraph)
-
-run_net <- function(times, mean_times='',
-                    remove = c('score','age','weight','total_fatmass','total_leanmass',
-                               'trunk_fatmass','TMI','TFI','height'), 
-                    verbose = TRUE) { 
-  # Subset columns 
-  d <- data[,sel(times)]
-  d = d[, -which( names(d) %in% sel(remove) )] # e.g., remove total depression score and age at measurement
-  
-  # Select cases with at least one observation 
-  d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
-  
-  if (verbose) { 
-    n_depitems <- sum(names(d) %in% sel('DEP'))
-    message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
-    cat(n_obs, 'observations.\n') 
-    cat(names(d), sep='\n') }
-  
-  # Correlation matrix
-  mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
-  
-  message('Fitting network...')
-  
-  # Fit the network
-  gra <- qgraph::qgraph(mat, 
-                        labels=names(d_obs),
-                        graph = 'glasso', # with EPIC model selection
-                        sampleSize = n_obs,
-                        # estimator ='FIML', 
-                        layout = 'spring', # node placement
-                        tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
-                        lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
-  ) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
-  
-  # Weight matrix
-  wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
-  wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
-  
-  # Centrality indices
-  ci <- centralityTable(gra)[,3:5]
-  ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
-  names(ci) = gsub('value.', '', names(ci))
-  
-  # Fit measures 
-  fit <- as.data.frame(ggmFit(gra, covMat=mat, sampleSize=n_obs)$fitMeasures)
-  fit['N_obs'] <- n_obs
-  
-  # Layout
-  layout <- gra$layout
-  row.names(layout) <- gra$graphAttributes$Nodes$names
-  
-  # Save output
-  if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
-  save(wm, ci, fit, layout, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
-  
-  return(gra)
-}
-
-cn9.7 <- run_net(times = c('9.6y','9.8y'))
-cn10.65 <- run_net(times = c('10.6y','10.7y'))
-cn11.75 <- run_net(times = c('11.7y','11.8y'))
-
-cn12.8 <- run_net(times = c('12.8y'))
-cn13.1 <- run_net(times = c('13.1y'))
-cn13.8 <- run_net(times = c('13.8y'))
-cn15.4 <- run_net(times = c('15.4y')) # note: CMR only 
-
-cn16.6 <- run_net(times = c('16.6y','17y'))
-cn16.7 <- run_net(times = c('16.7y','17y'))
-
-cn17.8 <- run_net(times = c('17.8y')) # note: also lifestyle 
-
-cn18.7 <- run_net(times = c('18.7y')) # note: depression only 
-cn21.9 <- run_net(times = c('21.9y')) # note: depression only 
-cn22.9 <- run_net(times = c('22.9y')) # note: depression only 
-
-cn24.1 <- run_net(times = c('23.8y','24.5y'))
+# library(qgraph)
+# 
+# run_net <- function(times, mean_times='',
+#                     remove = c('score','age','weight','total_fatmass','total_leanmass',
+#                                'trunk_fatmass','TMI','TFI','height'), 
+#                     verbose = TRUE) { 
+#   # Subset columns 
+#   d <- data[,sel(times)]
+#   d = d[, -which( names(d) %in% sel(remove) )] # e.g., remove total depression score and age at measurement
+#   
+#   # Select cases with at least one observation 
+#   d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
+#   
+#   if (verbose) { 
+#     n_depitems <- sum(names(d) %in% sel('DEP'))
+#     message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
+#     cat(n_obs, 'observations.\n') 
+#     cat(names(d), sep='\n') }
+#   
+#   # Correlation matrix
+#   mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
+#   
+#   message('Fitting network...')
+#   
+#   # Fit the network
+#   gra <- qgraph::qgraph(mat, 
+#                         labels=names(d_obs),
+#                         graph = 'glasso', # with EPIC model selection
+#                         sampleSize = n_obs,
+#                         # estimator ='FIML', 
+#                         layout = 'spring', # node placement
+#                         tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
+#                         lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
+#   ) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
+#   
+#   # Weight matrix
+#   wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
+#   wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
+#   
+#   # Centrality indices
+#   ci <- centralityTable(gra)[,3:5]
+#   ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
+#   names(ci) = gsub('value.', '', names(ci))
+#   
+#   # Fit measures 
+#   fit <- as.data.frame(ggmFit(gra, covMat=mat, sampleSize=n_obs)$fitMeasures)
+#   fit['N_obs'] <- n_obs
+#   
+#   # Layout
+#   layout <- gra$layout
+#   row.names(layout) <- gra$graphAttributes$Nodes$names
+#   
+#   # Save output
+#   if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
+#   save(wm, ci, fit, layout, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
+#   
+#   return(gra)
+# }
+# 
+# cn9.7 <- run_net(times = c('9.6y','9.8y'))
+# cn10.65 <- run_net(times = c('10.6y','10.7y'))
+# cn11.75 <- run_net(times = c('11.7y','11.8y'))
+# 
+# cn12.8 <- run_net(times = c('12.8y'))
+# cn13.1 <- run_net(times = c('13.1y'))
+# cn13.8 <- run_net(times = c('13.8y'))
+# cn15.4 <- run_net(times = c('15.4y')) # note: CMR only 
+# 
+# cn16.6 <- run_net(times = c('16.6y','17y'))
+# cn16.7 <- run_net(times = c('16.7y','17y'))
+# 
+# cn17.8 <- run_net(times = c('17.8y')) # note: also lifestyle 
+# 
+# cn18.7 <- run_net(times = c('18.7y')) # note: depression only 
+# cn21.9 <- run_net(times = c('21.9y')) # note: depression only 
+# cn22.9 <- run_net(times = c('22.9y')) # note: depression only 
+# 
+# cn24.1 <- run_net(times = c('23.8y','24.5y'))
 
 # averageLayout(cn24.1, cn22.9)
 

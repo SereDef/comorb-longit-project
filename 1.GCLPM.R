@@ -3,8 +3,8 @@
 # ==============================================================================
 
 # Load dependencies
-invisible(lapply(c('lavaan','tidySEM','pbapply','foreach'), require, character.only = TRUE));
-# library(parallel)
+invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE));
+# Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
 data <- readRDS('../mats/raw_data.rds')
