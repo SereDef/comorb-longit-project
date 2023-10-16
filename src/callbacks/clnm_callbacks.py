@@ -8,7 +8,7 @@ from definitions.clnm_funcs import make_table2
 # Adjust order in CI tables based on selected column
 @callback(
     Output(ids.TEMP_CI_TAB, 'data'),
-    Input(ids.TEMP_CI_TAB, 'sort_by')
+    Input(ids.TEMP_CI_TAB, 'sort_by'), prevent_initial_call=True
 )
 def update_temp_tab(sort_by):
 
@@ -20,7 +20,7 @@ def update_temp_tab(sort_by):
 
 @callback(
     Output(ids.CONT_CI_TAB, 'data'),
-    Input(ids.CONT_CI_TAB, 'sort_by')
+    Input(ids.CONT_CI_TAB, 'sort_by'), prevent_initial_call=True
 )
 def update_cont_tab(sort_by):
 
@@ -32,7 +32,7 @@ def update_cont_tab(sort_by):
 
 @callback(
     Output(ids.BETW_CI_TAB, 'data'),
-    Input(ids.BETW_CI_TAB, 'sort_by')
+    Input(ids.BETW_CI_TAB, 'sort_by'), prevent_initial_call=True
 )
 def update_betw_tab(sort_by):
 

@@ -17,7 +17,7 @@ all_desc = pd.read_csv('./assets/descdf.csv', index_col=0)
 age_desc = all_desc[list(all_desc.columns[all_desc.columns.str.contains('age')])]
 
 
-def plot_overview(width=1900, height=1000, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
+def plot_overview(width=1600, height=800, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
     """Input: dimensions (optional).
        Creates an interactive scatterplot figure with time of measurement on the x-axis and all measures on the y-axis.
        Markers indicate the median age at measurement [+/- 95% CI in age range].

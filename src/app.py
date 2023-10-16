@@ -11,21 +11,28 @@ app = Dash(__name__,
            external_stylesheets=external_stylesheets,
            suppress_callback_exceptions=True)
 
+navbar_content = [
+    dbc.NavItem(dbc.NavLink('Data overview', href='/', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-lag panel model', href='/clpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-lag network model', href='/clnm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-sectional network model', href='/csnm', active='exact'))
+]
+
 app.layout = html.Div([
     # TITLE
     html.H1(id='title',
             style={'textAlign': 'center', 'font-weight': 'bold'},
             children='Longitudinal modelling of the co-development of depression and cardio-metabolic risk \
             from childhood to young adulthood'),
+    html.Br(),
 
     # CONTENT
     dbc.Row(
-        style={'textAlign': 'center'},
-        children=[dbc.Col(dbc.NavLink('Data overview', href='/')),
-                  dbc.Col(dbc.NavLink('Cross-lag panel model', href='/clpm')),
-                  dbc.Col(dbc.NavLink('Cross-lag network model', href='/clnm')),
-                  dbc.Col(dbc.NavLink('Cross-sectional network model', href='/csnm'))]
+        dbc.Col(width={'size': 10, 'offset': 1},
+                children=[dbc.Nav(navbar_content, pills=True, fill=True)])
     ),
+    html.Br(),
+
     page_container
 ])
 

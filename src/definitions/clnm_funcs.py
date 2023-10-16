@@ -21,25 +21,47 @@ def display_column2(which_net, position):
     col = dbc.Col(width=4,
                   children=[
                       html.H4(specs[which_net][0]),
-                      dbc.Row(cyto.Cytoscape(id=specs[which_net][1],
-                                     layout={'name': 'preset'},
-                                     style={'width': '30%', 'height': '60%',
-                                            'position': 'absolute', 'left': position, 'top': 350, 'z-index': 999},
-                                     minZoom=1, maxZoom=1,  # disable user zooming
-                                     elements=make_net2(which_net),
-                                     stylesheet=make_style_net2(which_net))),
-                      dbc.Row(dash_table.DataTable(id=specs[which_net][2],
-                                           data=make_table2(which_net).to_dict('records'),
-                                           columns=[{'name': i, 'id': i} for i in make_table2(which_net)],
-                                           sort_action='custom', sort_mode='single', sort_by=[],
-                                           fixed_columns={'headers': True, 'data': 0},  # Fix node name column
-                                           # style_as_list_view=True, # Remove vertical lines between columns
-                                           style_header={'fontWeight': 'bold'},
-                                           style_cell={'fontSize': 20, 'font-family': 'sans-serif'},
-                                           style_cell_conditional=[{'if': {'column_id': 'Node'}, 'width': '250px'}],
-                                           style_data={'whiteSpace': 'normal', 'height': 'auto', 'lineHeight': '20px',
-                                                       'minWidth': '100px', 'width': '100px', 'maxWidth': '100px'},
-                                           style_table={'overflowX': 'auto', 'minWidth': '100%'}))
+                      dbc.Stack(gap=2,
+                                children=[
+                                    html.Div(children=[cyto.Cytoscape(id=specs[which_net][1],
+                                                                     layout={'name': 'preset'},
+                                                                     style={'width': '30%', 'height': '60%',
+                                                                            'position': 'absolute', 'left': position,
+                                                                            'top': 350, 'z-index': 999},
+                                                                     minZoom=1, maxZoom=1,  # disable user zooming
+                                                                     elements=make_net2(which_net),
+                                                                     stylesheet=make_style_net2(which_net))
+                                                      ]),
+                                    html.Div(dbc.Accordion(start_collapsed=True,
+                                                           children=[
+                                                               dbc.AccordionItem(
+                                                                   title='Inspect centrality indices',
+                                                                   children=[
+                                                                       dash_table.DataTable(id=specs[which_net][2],
+                                                                           data=make_table2(which_net).to_dict(
+                                                                               'records'),
+                                                                           columns=[{'name': i, 'id': i} for i in
+                                                                                    make_table2(which_net)],
+                                                                           sort_action='custom', sort_mode='single',
+                                                                           sort_by=[],
+                                                                           fixed_columns={'headers': True, 'data': 0},
+                                                                           # Fix node name columngit
+                                                                           style_header={'fontWeight': 'bold'},
+                                                                           style_cell={'fontSize': 20,
+                                                                                       'font-family': 'sans-serif'},
+                                                                           style_cell_conditional=[
+                                                                               {'if': {'column_id': 'Node'},
+                                                                                'width': '300px'}],
+                                                                           style_data={'whiteSpace': 'normal',
+                                                                                       'height': 'auto',
+                                                                                       'lineHeight': '20px',
+                                                                                       'minWidth': '100px',
+                                                                                       'width': '100px',
+                                                                                       'maxWidth': '100px'},
+                                                                           style_table={'overflowX': 'auto',
+                                                                                        'minWidth': '100%'})
+                                                       ])]))
+                                ])
                   ])
     return col
 
