@@ -27,7 +27,7 @@ def display_column2(which_net, position):
                                                                      layout={'name': 'preset'},
                                                                      style={'width': '30%', 'height': '60%',
                                                                             'position': 'absolute', 'left': position,
-                                                                            'top': 350, 'z-index': 999},
+                                                                            'top': '35vh'},
                                                                      minZoom=1, maxZoom=1,  # disable user zooming
                                                                      elements=make_net2(which_net),
                                                                      stylesheet=make_style_net2(which_net))

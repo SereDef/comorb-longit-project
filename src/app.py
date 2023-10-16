@@ -9,7 +9,9 @@ external_stylesheets = [dbc.themes.BOOTSTRAP, FONT_AWESOME]
 app = Dash(__name__,
            use_pages=True,
            external_stylesheets=external_stylesheets,
+           meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1'}],
            suppress_callback_exceptions=True)
+server = app.server
 
 navbar_content = [
     dbc.NavItem(dbc.NavLink('Data overview', href='/', active='exact')),

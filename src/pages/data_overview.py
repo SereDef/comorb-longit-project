@@ -137,7 +137,7 @@ layout = dbc.Row([
                 html.Div(['Overview of the data available from the', bold_it('ALSPAC'), 'cohort.']),
                 html.Hr(),
 
-                dcc.Graph(style={'width': '90vw', 'height': '90vh'},
+                dcc.Graph(style={'width': '90vw', 'height': '45vh'},
                           id='overview-fig',
                           figure=plot_overview())
                 ])

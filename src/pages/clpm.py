@@ -29,7 +29,7 @@ layout = dbc.Row([
 
                 # Input
                 dbc.Row([
-                    dbc.Col(width={'size': 5, 'offset': 1},
+                    dbc.Col(width={'size': 5, 'offset': 1}, lg=4, md=3, sm=2,
                             children=[
                                 html.H5(style={'textAlign': 'left'}, children='Depression score'),
                                 dcc.RadioItems(id=ids.DEP_SELECTION,
@@ -40,7 +40,7 @@ layout = dbc.Row([
                                 dcc.Dropdown(id=ids.CMR_SELECTION,
                                              options=cmr_var_checklist(), value='FMI')
                             ]),
-                    dbc.Col(width={'size': 5, 'offset': 1},
+                    dbc.Col(width={'size': 5, 'offset': 1}, lg=6, md=7, sm=8,
                             children=[
                                 html.H5(style={'textAlign': 'left'}, children='Model estimation'),
                                 param_checklist('sDEP', 'FMI', p='lt'),
@@ -72,7 +72,7 @@ layout = dbc.Row([
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH,
                                                layout={'name': 'preset', 'fit': False},
-                                               style={'width': '100%', 'height': '1000px'},
+                                               style={'width': '100%', 'height': '100vh'},
                                                elements=make_net1('sDEP', 'FMI'),
                                                stylesheet=style_net1,
                                                minZoom=1, maxZoom=1)  # disable user zooming

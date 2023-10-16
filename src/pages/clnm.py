@@ -15,11 +15,11 @@ layout = dbc.Row([
 
                 dbc.Row([
                     # Temporal network
-                    display_column2('t', 150),
+                    display_column2('t', '6vw'),
                     # Contemporaneous network
-                    display_column2('c', 850),
+                    display_column2('c', '36vw'),
                     # Between person network
-                    display_column2('b', 1550)
+                    display_column2('b', '65vw')
                 ])
             ])
 ])

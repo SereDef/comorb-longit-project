@@ -28,13 +28,13 @@ layout = dbc.Row([
                             children=[cyto.Cytoscape(id=ids.CROS_NET,
                                                      layout={'name': 'preset'},
                                                      style={'width': '40%', 'height': '80%',
-                                                            'position': 'absolute', 'left': 150, 'top': 380, 'z-index': 999},
+                                                            'position': 'absolute', 'left': '10vw', 'top': '35vh'},
                                                      minZoom=1, maxZoom=1,  # disable user zooming
                                                      elements=make_net3(9.7)[0],
                                                      stylesheet=style_net3)]),
                     # Table
                     dbc.Col(width={'size': 5, 'offset': 1},
-                            children=[html.Br(),
+                            children=[html.Br(), html.Br(),
                                       dash_table.DataTable(
                                           id=ids.CROS_CI_TAB,
                                           columns=[{'name': i, 'id': i} for i in make_net3(9.7)[1].columns],
