@@ -7,8 +7,9 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
+import definitions.layout_styles as styles
 from definitions.variable_names import labels
-from definitions.general_funcs import bold_it
+from definitions.general_funcs import bold_it, badge_it, wrap_it
 
 # Quick descriptives file
 all_desc = pd.read_csv('./assets/descdf.csv', index_col=0)
@@ -17,7 +18,7 @@ all_desc = pd.read_csv('./assets/descdf.csv', index_col=0)
 age_desc = all_desc[list(all_desc.columns[all_desc.columns.str.contains('age')])]
 
 
-def plot_overview(width=1600, height=800, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
+def plot_overview(width=1600, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
     """Input: dimensions (optional).
        Creates an interactive scatterplot figure with time of measurement on the x-axis and all measures on the y-axis.
        Markers indicate the median age at measurement [+/- 95% CI in age range].
@@ -119,7 +120,7 @@ def plot_overview(width=1600, height=800, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI
 
     fig.update_yaxes(mirror=True, ticks='inside', linecolor='black')
 
-    fig.update_layout(autosize=False, width=width, height=height,
+    fig.update_layout(autosize=False, width=width, height=width*.55,
                       yaxis1=dict(range=(12.7, -0.7)), yaxis2=dict(range=(24.7, -0.7), ),
                       xaxis2=dict(title='Child age (years)'),
                       shapes=cmrgrouplabels, plot_bgcolor='white', margin=dict(l=20, r=20, t=20, b=20),
@@ -134,11 +135,19 @@ register_page(__name__, path='/')
 layout = dbc.Row([
     dbc.Col(width={'size': 10, 'offset': 1},
             children=[
-                html.Div(['Overview of the data available from the', bold_it('ALSPAC'), 'cohort.']),
+                html.Div(['Overview of the data available from the', bold_it('ALSPAC'), 'cohort.', wrap_it(2),
+                          'This includes 13 symptoms of depression from the Short Mood and Feelings Questionnaire (SMFQ), \
+                          completed by mothers (', badge_it(' ', color='rgb(148, 103, 189)', pad='6px 7px'),
+                          ') or participants themselves (', badge_it(' ', color='rgb(71, 107, 237)', pad='6px 7px'),
+                          ') at several time points across 15 years. We also measured a total of 25 physical health \
+                          markers (', badge_it(' ', color='rgb(214, 39, 40)', pad='6px 7px'),
+                          '), spanning from anthropometry to inflammation. Hover over graph below for more information \
+                          about these data points.'],
+                         style=styles.TEXT),
                 html.Hr(),
 
-                dcc.Graph(style={'width': '90vw', 'height': '45vh'},
+                dcc.Graph(  # style={'width': '1000vw', 'height': '100vw'},
                           id='overview-fig',
-                          figure=plot_overview())
+                          figure=plot_overview(width=1700))
                 ])
 ])

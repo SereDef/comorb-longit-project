@@ -22,8 +22,8 @@ def underline_it(text):
     return html.Span(f'{text}', style={'text-decoration': 'underline'})
 
 
-def badge_it(text, color):
-    return dbc.Badge(text, color=color, style={'padding': '4px 5px'})
+def badge_it(text, color, pad='4px 5px'):
+    return dbc.Badge(text, color=color, style={'padding': pad, 'font-size': '16px'})
 
 
 def wrap_it(n_spaces=1):

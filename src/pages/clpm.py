@@ -3,6 +3,7 @@ import dash_bootstrap_components as dbc
 import dash_cytoscape as cyto
 
 import definitions.elements_ids as ids
+import definitions.layout_styles as styles
 
 from definitions.general_funcs import bold_it, badge_it, underline_it, wrap_it
 
@@ -24,25 +25,28 @@ layout = dbc.Row([
                           underline_it('Note'), ': by default, the "classic" cross-lag panel model is presented, but the parameter \
                           conbination can be constumized using the tickboxes on the right (don\'t forget to hit the ',
                           badge_it('Update model', 'grey'), ' button to see the changes). Hit the ', badge_it('Best fit', 'silver'),
-                          ' button to display the best fitting model (i.e. lowest AIC).']),
+                          ' button to display the best fitting model (i.e. lowest AIC).'],
+                         style=styles.TEXT),
                 html.Hr(),
 
                 # Input
                 dbc.Row([
-                    dbc.Col(width={'size': 5, 'offset': 1}, lg=4, md=3, sm=2,
+                    dbc.Col(width={'size': 4, 'offset': 1}, lg=3, md=2, sm=1,
                             children=[
-                                html.H5(style={'textAlign': 'left'}, children='Depression score'),
+                                html.H5(style=styles.SUB_TITLE1, children='Depression score'),
                                 dcc.RadioItems(id=ids.DEP_SELECTION,
                                                options=dep_var_checklist(), value='sDEP',
-                                               inputStyle={'margin-left': '20px', 'margin-right': '20px'}),
+                                               inputStyle={'margin-left': '20px', 'margin-right': '20px'},
+                                               style=styles.TEXT),
                                 html.Br(),
-                                html.H5(style={'textAlign': 'left'}, children='Cardio-metabolic marker'),
+                                html.H5(style=styles.SUB_TITLE1, children='Cardio-metabolic marker'),
                                 dcc.Dropdown(id=ids.CMR_SELECTION,
-                                             options=cmr_var_checklist(), value='FMI')
+                                             options=cmr_var_checklist(), value='FMI',
+                                             style=styles.TEXT)
                             ]),
-                    dbc.Col(width={'size': 5, 'offset': 1}, lg=6, md=7, sm=8,
+                    dbc.Col(width={'size': 6}, lg=7, md=8, sm=9,
                             children=[
-                                html.H5(style={'textAlign': 'left'}, children='Model estimation'),
+                                html.H5(style=styles.SUB_TITLE1, children='Model estimation'),
                                 param_checklist('sDEP', 'FMI', p='lt'),
                                 param_checklist('sDEP', 'FMI', p='ma'),
                                 html.Div(style={'width': '40%', 'height': '35%', 'float': 'right'},
@@ -53,22 +57,23 @@ layout = dbc.Row([
                                 html.Div(style={'width': '60%', 'height': '25%', 'float': 'left', 'color': 'red'},
                                          id=ids.FAILED_MODEL)
                             ])
-                ]), html.Hr(),
+                ], justify='between'), html.Hr(),
 
                 # Time plot
                 html.Div([dbc.Accordion(start_collapsed=True,
                                         children=[
                                             dbc.AccordionItem(title='Inspect the variables included in this model',
                                                               children=[
-                                                                  dcc.Graph(id=ids.TIME_GRAPH, figure=make_plot1('sDEP', 'FMI'))
-                                                              ])
+                                                                  dcc.Graph(id=ids.TIME_GRAPH,
+                                                                            figure=make_plot1('sDEP', 'FMI'))],
+                                                              style=styles.TEXT)
                                         ])
                           ]),
 
                 # Results
                 dbc.Row([
                     # Network
-                    dbc.Col(width=9,
+                    dbc.Col(width=10,
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH,
                                                layout={'name': 'preset', 'fit': False},
@@ -78,7 +83,7 @@ layout = dbc.Row([
                                                minZoom=1, maxZoom=1)  # disable user zooming
                                 ]),
                     # Table
-                    dbc.Col(width=3,
+                    dbc.Col(width=2,
                             children=[html.Br(),
                                       html.Div(id=ids.FITM_TABLE,
                                                children=[dbc.Table.from_dataframe(

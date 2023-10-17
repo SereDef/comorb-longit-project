@@ -3,6 +3,8 @@ import dash_bootstrap_components as dbc
 import dash_cytoscape as cyto
 
 import definitions.elements_ids as ids
+import definitions.layout_styles as styles
+
 from definitions.general_funcs import bold_it
 from definitions.csnm_funcs import time_marks3, make_net3, style_net3
 
@@ -13,12 +15,13 @@ layout = dbc.Row([
             children=[
                 html.Br(),
                 html.Span(['Results of each', bold_it('cross-sectional network model'), 'conducted as follow-up analyses. \
-                Please select the timepoint of interest from the slides to visualize the network structure and corresponding \
-                centrality indices.']),
+                Please select the time point of interest from the slides to visualize the network structure and corresponding \
+                centrality indices.'], style=styles.TEXT),
                 html.Br(), html.Hr(),
 
                 # Slider
-                html.Span(children=[html.Div('Select a time point:'), html.Br(style={'line-height': '5'})]),
+                html.Span(children=[html.Div('Select a time point:', style=styles.TEXT),
+                                    html.Br(style={'line-height': '5'})]),
                 dcc.Slider(id=ids.CROS_NET_SLIDER, min=9.7, max=24.2, step=None, value=9.7, marks=time_marks3, included=False),
 
                 # Results
@@ -28,7 +31,7 @@ layout = dbc.Row([
                             children=[cyto.Cytoscape(id=ids.CROS_NET,
                                                      layout={'name': 'preset'},
                                                      style={'width': '40%', 'height': '80%',
-                                                            'position': 'absolute', 'left': '10vw', 'top': '35vh'},
+                                                            'position': 'absolute', 'left': '10vw', 'top': '40vh'},
                                                      minZoom=1, maxZoom=1,  # disable user zooming
                                                      elements=make_net3(9.7)[0],
                                                      stylesheet=style_net3)]),

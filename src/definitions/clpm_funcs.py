@@ -8,6 +8,7 @@ import pandas as pd
 import pyreadr
 import textwrap
 
+# import definitions.layout_styles as styles
 from definitions.general_funcs import badge_it, get_label
 
 
@@ -48,7 +49,7 @@ def param_checklist(depname, cmrname, p='lt', best=False):
     else:
         val = ['ltCL_dep', 'ltCL_cmr', 'ltAR_dep', 'ltAR_cmr'] if p == 'lt' else []
 
-    return html.Div(style={'width': '50%', 'height': '65%', 'float': position},
+    return html.Div(style={'width': '50%', 'height': '65%', 'float': position, 'font-size': '18px'},
                     children=[dcc.Checklist(id=f'{p}-checklist',
                                             options=[
                                                 {'label': html.Span([badge_it(f'{pref}AR', cols[0]), ' depression']),
@@ -69,7 +70,7 @@ def param_checklist(depname, cmrname, p='lt', best=False):
 
 def make_button(label, id_name, color, margin='15px'):
     return dbc.Button(label, id=id_name, color='secondary', n_clicks=0,
-                      style={'font-weight': 'bold', 'background-color': color,
+                      style={'font-size': '18px', 'font-weight': 'bold', 'background-color': color,
                              'padding': '4px 10px', 'margin-left': margin})
 
 

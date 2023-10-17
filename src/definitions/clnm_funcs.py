@@ -7,7 +7,9 @@ import numpy as np
 import pyreadr
 import textwrap
 
+import definitions.layout_styles as styles
 import definitions.elements_ids as ids
+
 from definitions.general_funcs import get_label
 
 
@@ -20,7 +22,7 @@ def display_column2(which_net, position):
 
     col = dbc.Col(width=4,
                   children=[
-                      html.H4(specs[which_net][0]),
+                      html.H5(specs[which_net][0], style=styles.SUB_TITLE2),
                       dbc.Stack(gap=2,
                                 children=[
                                     html.Div(children=[cyto.Cytoscape(id=specs[which_net][1],
@@ -60,7 +62,7 @@ def display_column2(which_net, position):
                                                                                        'maxWidth': '100px'},
                                                                            style_table={'overflowX': 'auto',
                                                                                         'minWidth': '100%'})
-                                                       ])]))
+                                                                   ], style=styles.TEXT)]))
                                 ])
                   ])
     return col

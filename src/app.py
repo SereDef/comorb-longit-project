@@ -1,6 +1,8 @@
 from dash import Dash, html, page_container
 import dash_bootstrap_components as dbc
 
+import definitions.layout_styles as styles
+
 from callbacks import clpm_callbacks, clnm_callbacks, csnm_callbacks
 
 FONT_AWESOME = "https://use.fontawesome.com/releases/v5.13.0/css/all.css"
@@ -23,7 +25,7 @@ navbar_content = [
 app.layout = html.Div([
     # TITLE
     html.H1(id='title',
-            style={'textAlign': 'center', 'font-weight': 'bold'},
+            style=styles.TITLE,
             children='Longitudinal modelling of the co-development of depression and cardio-metabolic risk \
             from childhood to young adulthood'),
     html.Br(),
@@ -31,7 +33,8 @@ app.layout = html.Div([
     # CONTENT
     dbc.Row(
         dbc.Col(width={'size': 10, 'offset': 1},
-                children=[dbc.Nav(navbar_content, pills=True, fill=True)])
+                children=[dbc.Nav(navbar_content, pills=True, fill=True,
+                                  style=styles.NAVBAR)])
     ),
     html.Br(),
 
