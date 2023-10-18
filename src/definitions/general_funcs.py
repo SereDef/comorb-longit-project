@@ -8,6 +8,7 @@ import pandas as pd
 import re
 import textwrap
 
+import definitions.layout_styles as styles
 from definitions.variable_names import labels
 
 
@@ -22,8 +23,8 @@ def underline_it(text):
     return html.Span(f'{text}', style={'text-decoration': 'underline'})
 
 
-def badge_it(text, color, pad='4px 5px'):
-    return dbc.Badge(text, color=color, style={'padding': pad, 'font-size': '16px'})
+def badge_it(text, color, fs=styles.TEXT['font-size'], pad='4px 5px'):
+    return dbc.Badge(text, color=color, style={'padding': pad, 'font-size': fs})
 
 
 def wrap_it(n_spaces=1):

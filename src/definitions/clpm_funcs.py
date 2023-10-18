@@ -39,7 +39,7 @@ def cmr_var_checklist(reporter='s'):
     return opts
 
 
-def param_checklist(depname, cmrname, p='lt', best=False):
+def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT['font-size']):
     pref = '' if p == 'lt' else 'ma'
     cols = ['crimson', 'green'] if p == 'lt' else ['orange', 'lightblue']
     position = 'left' if p == 'lt' else 'right'
@@ -52,25 +52,31 @@ def param_checklist(depname, cmrname, p='lt', best=False):
     return html.Div(style={'width': '50%', 'height': '65%', 'float': position, 'font-size': '18px'},
                     children=[dcc.Checklist(id=f'{p}-checklist',
                                             options=[
-                                                {'label': html.Span([badge_it(f'{pref}AR', cols[0]), ' depression']),
+                                                {'label': html.Span([
+                                                    badge_it(f'{pref}AR', cols[0], badgefont),
+                                                    ' depression']),
                                                  'value': f'{p}AR_dep'},
                                                 {'label': html.Span(
-                                                    [badge_it(f'{pref}AR', cols[0]), ' cardio-metabolic risk']),
+                                                    [badge_it(f'{pref}AR', cols[0], badgefont),
+                                                     ' cardio-metabolic risk']),
                                                  'value': f'{p}AR_cmr'},
-                                                {'label': html.Span([badge_it(f'{pref}CL', cols[1]),
-                                                                     ' depression \u290F cardio-metab.']),
+                                                {'label': html.Span(
+                                                    [badge_it(f'{pref}CL', cols[1], badgefont),
+                                                    ' depression \u290F cardio-metab.']),
                                                  'value': f'{p}CL_dep'},
-                                                {'label': html.Span([badge_it(f'{pref}CL', cols[1]),
-                                                                     ' cardio-metab. \u290F depression']),
+                                                {'label': html.Span(
+                                                    [badge_it(f'{pref}CL', cols[1], badgefont),
+                                                    ' cardio-metab. \u290F depression']),
                                                  'value': f'{p}CL_cmr'}],
                                             value=val,
+                                            style=styles.TEXT,
                                             inputStyle={'margin-left': '20px', 'margin-right': '20px'},
                                             labelStyle={'display': 'block'})])
 
 
-def make_button(label, id_name, color, margin='15px'):
+def make_button(label, id_name, color, margin='15px', fs=styles.TEXT['font-size']):
     return dbc.Button(label, id=id_name, color='secondary', n_clicks=0,
-                      style={'font-size': '18px', 'font-weight': 'bold', 'background-color': color,
+                      style={'font-size': fs, 'font-weight': 'bold', 'background-color': color,
                              'padding': '4px 10px', 'margin-left': margin})
 
 

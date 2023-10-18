@@ -5,7 +5,7 @@ import dash_cytoscape as cyto
 import definitions.elements_ids as ids
 import definitions.layout_styles as styles
 
-from definitions.general_funcs import bold_it
+from definitions.general_funcs import bold_it, wrap_it
 from definitions.csnm_funcs import time_marks3, make_net3, style_net3
 
 register_page(__name__, path='/csnm')
@@ -14,9 +14,11 @@ layout = dbc.Row([
     dbc.Col(width={'size': 10, 'offset': 1},
             children=[
                 html.Br(),
-                html.Span(['Results of each', bold_it('cross-sectional network model'), 'conducted as follow-up analyses. \
-                Please select the time point of interest from the slides to visualize the network structure and corresponding \
-                centrality indices.'], style=styles.TEXT),
+                html.Span(['Results of each', bold_it('cross-sectional network model'), 'conducted as follow-up analysis.',
+                wrap_it(2), 'Please select the time point of interest from the slider to visualize the network structure and corresponding \
+                centrality indices. The thickness of edges represent partial correlation coefficients (red = negative \
+                and blue = positive associations). Click on the nodes to get more information about the variables included.'],
+                          style=styles.TEXT),
                 html.Br(), html.Hr(),
 
                 # Slider

@@ -201,9 +201,16 @@ save_semgraph <- function(model, n_ocs, name) {
 ## Fit a single SEM model (used in run_model)
 run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name) {
   cat('- ', which(names(mat)==mod), mod)
+  
+  normalize <- function(x, ...) {
+    return( (x - min(x,...)) / (max(x,...) - min(x,...)) )
+  }
+  
+  normdata <- sapply(data, normalize, na.rm = TRUE)
+  
   # Run model
   set.seed(310896)
-  m <- lavaan::sem(formula(dep_temp, cmr_temp, mod), data, missing='fiml', se ='robust',
+  m <- lavaan::sem(formula(dep_temp, cmr_temp, mod), normdata, missing='fiml', se ='robust',
                    verbose=FALSE)
   
   if (lavInspect(m, "converged")){
@@ -273,15 +280,15 @@ run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=nam
 models <- list(
   # Self-reported depression ===================================================
   # – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
-  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-  #      'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)), # there is 17 too
-  # 
-  # # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
-  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-  #      'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
-  # 
-  # list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-  #   'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+       'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)), # there is 17 too
+
+  # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+       'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+    'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
   
   # - total lean mass/ LMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
   list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
@@ -291,8 +298,8 @@ models <- list(
    'total_leanmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
   
   # # – waist circumference: 10 – 13 – 16 – 14/25
-  # list('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
-  #      'waist_circ', c(10.6, 12.8, 15.4, 24.5)),
+  list('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
+       'waist_circ', c(10.6, 12.8, 15.4, 24.5)),
   
   # Android fat mass 
   list('sDEP_score', c(13.8, 16.6, 17.8, 23.8),
@@ -347,44 +354,3 @@ foreach(i=1:length(models)) %dopar% {
   param = models[[i]]
   run_model(param[[1]], param[[2]], param[[3]], param[[4]])
 }
-
-
-# – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
-# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-#           'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)) # there is 17 too
-# 
-# # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
-# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-#           'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
-# 
-# # Take it from here
-# run_model('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-#        'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5))
-# 
-# # – waist circumference: 10 – 13 – 16 – 14/25
-# run_model('sDEP_score', c(10.6, 12.8, 16.6, 23.8),
-#           'waist_circ', c(10.6, 12.8, 15.4, 24.5))
-
-# Mother reported ==============================================================
-# – BMI: 10 – 12 – 13 – 16  # (with mean BMI 15.5 – 18) 
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#           'BMI',        c(9.8, 11.8, 12.8, 16)) # there is 17 too but lower correlation (0.2 vs. 0.4)
-# 
-# # – waist circumference: 10 – 12 – 13 – 16
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#           'waist_circ', c(9.8, 11.8, 12.8, 15.4))
-# 
-# # – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18) 
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#           'FMI',        c(9.8, 11.8, 13.8, 17.8))
-# 
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#        'total_fatmass', c(9.8, 11.8, 13.8, 17.8))
-# 
-# # – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#           'LMI',        c(9.8, 11.8, 13.8, 17.8))
-# 
-# run_model('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-#       'total_leanmass', c(9.8, 11.8, 13.8, 17.8))
-# ==============================================================================
