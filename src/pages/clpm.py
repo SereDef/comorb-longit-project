@@ -73,7 +73,7 @@ layout = dbc.Row([
                 # Results
                 dbc.Row([
                     # Network
-                    dbc.Col(width=10,
+                    dbc.Col(width=9,
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH,
                                                layout={'name': 'preset', 'fit': False},
@@ -83,14 +83,15 @@ layout = dbc.Row([
                                                minZoom=1, maxZoom=1)  # disable user zooming
                                 ]),
                     # Table
-                    dbc.Col(width=2,
+                    dbc.Col(width=3,
                             children=[html.Br(),
                                       html.Div(id=ids.FITM_TABLE,
                                                children=[dbc.Table.from_dataframe(
                                                    df=make_table1('sDEP', 'FMI'),
+                                                   style={'font-size': '12px'},
                                                    color='light', striped=True, bordered=True, hover=True, size='lg')])
                                       ])
-                ]),
+                ], justify='between'),
 
                 # Pop variable descriptives
                 dbc.Offcanvas(style={'width': 700},

@@ -29,7 +29,7 @@ def display_column2(which_net, position):
                                                                      layout={'name': 'preset'},
                                                                      style={'width': '30%', 'height': '60%',
                                                                             'position': 'absolute', 'left': position,
-                                                                            'top': '35vh'},
+                                                                            'top': styles.CLNM_V_POS},
                                                                      minZoom=1, maxZoom=1,  # disable user zooming
                                                                      elements=make_net2(which_net),
                                                                      stylesheet=make_style_net2(which_net))
@@ -43,13 +43,13 @@ def display_column2(which_net, position):
                                                                            data=make_table2(which_net).to_dict(
                                                                                'records'),
                                                                            columns=[{'name': i, 'id': i} for i in
-                                                                                    make_table2(which_net)],
+                                                                                    make_table2(which_net).columns],
                                                                            sort_action='custom', sort_mode='single',
                                                                            sort_by=[],
                                                                            fixed_columns={'headers': True, 'data': 0},
-                                                                           # Fix node name columngit
+                                                                           # Fix node name column
                                                                            style_header={'fontWeight': 'bold'},
-                                                                           style_cell={'fontSize': 20,
+                                                                           style_cell={'fontSize': 18,
                                                                                        'font-family': 'sans-serif'},
                                                                            style_cell_conditional=[
                                                                                {'if': {'column_id': 'Node'},
@@ -87,8 +87,8 @@ def read_res2(which_net, path='./assets/results/mod2/'):
     # layout computed by qgraph (spring algorithm)
     lay = res['layout'].rename(columns={0: 'x_og', 1: 'y_og'})
     # rescale to pixels
-    lay['x'] = np.interp(lay['x_og'], (lay['x_og'].min(), lay['x_og'].max()), (0, 500))
-    lay['y'] = np.interp(lay['y_og'], (lay['y_og'].min(), lay['y_og'].max()), (0, 500))
+    lay['x'] = np.interp(lay['x_og'], (lay['x_og'].min(), lay['x_og'].max()), (0, styles.CLNM_WIDTH))
+    lay['y'] = np.interp(lay['y_og'], (lay['y_og'].min(), lay['y_og'].max()), (0, styles.CLNM_WIDTH))
     # add class
     lay['class'] = ['dep' if t else 'cmr' for t in lay.index.str.contains('DEP')]
 
@@ -124,8 +124,10 @@ def make_net2(which_net):
 
 
 def make_style_net2(which_net):
-    sn2 = [{'selector': 'node', 'style': {'label': 'data(label)', 'text-wrap': 'wrap'}},
-           # Edge opacty and width
+    sn2 = [{'selector': 'node', 'style': {'height': styles.CLNM_NODE_SIZE, 'width': styles.CLNM_NODE_SIZE,
+                                          'label': 'data(label)', 'text-wrap': 'wrap',
+                                          'font-size': styles.CLNM_NODE_LABEL}},
+           # Edge opacity and width
            {'selector': 'edge', 'style': {'opacity': 'data(weight)', 'width': 'data(width)'}},
            # Color nodes by group
            {'selector': '.dep', 'style': {'background-color': 'lightblue'}},

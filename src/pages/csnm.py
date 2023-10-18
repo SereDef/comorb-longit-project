@@ -22,7 +22,8 @@ layout = dbc.Row([
                 # Slider
                 html.Span(children=[html.Div('Select a time point:', style=styles.TEXT),
                                     html.Br(style={'line-height': '5'})]),
-                dcc.Slider(id=ids.CROS_NET_SLIDER, min=9.7, max=24.2, step=None, value=9.7, marks=time_marks3, included=False),
+                dcc.Slider(id=ids.CROS_NET_SLIDER, min=9.7, max=24.2, step=None, value=9.7, marks=time_marks3,
+                           included=False),
 
                 # Results
                 dbc.Row([
@@ -31,7 +32,8 @@ layout = dbc.Row([
                             children=[cyto.Cytoscape(id=ids.CROS_NET,
                                                      layout={'name': 'preset'},
                                                      style={'width': '40%', 'height': '80%',
-                                                            'position': 'absolute', 'left': '10vw', 'top': '40vh'},
+                                                            'position': 'absolute', 'left': '10vw',
+                                                            'top': styles.CSNM_V_POS},
                                                      minZoom=1, maxZoom=1,  # disable user zooming
                                                      elements=make_net3(9.7)[0],
                                                      stylesheet=style_net3)]),
@@ -44,7 +46,7 @@ layout = dbc.Row([
                                           sort_action='custom', sort_mode='single', sort_by=[],
                                           fixed_columns={'headers': True, 'data': 1},  # Fix node name column
                                           style_header={'fontWeight': 'bold'},
-                                          style_cell={'fontSize': 20, 'font-family': 'sans-serif'},
+                                          style_cell={'font-size': styles.CSNM_NODE_LABEL, 'font-family': 'sans-serif'},
                                           style_cell_conditional=[{'if': {'column_id': 'Node'}, 'width': '250px'}],
                                           style_data={'whiteSpace': 'normal', 'height': 'auto', 'lineHeight': '20px',
                                                       'minWidth': '100px', 'width': '100px', 'maxWidth': '100px'},

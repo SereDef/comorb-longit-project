@@ -8,7 +8,7 @@ import pandas as pd
 import pyreadr
 import textwrap
 
-# import definitions.layout_styles as styles
+import definitions.layout_styles as styles
 from definitions.general_funcs import badge_it, get_label
 
 
@@ -190,7 +190,8 @@ def make_plot1(depname, cmrname):
     return fig
 
 
-def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr', width=1000):
+def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr',
+              width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
        Creates a list of dictionaries to use as input for the elements arg of cytoscape graph.
@@ -313,23 +314,25 @@ def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr
 
 
 # Define the stile of the graph
+width = styles.CLPM_WIDTH
+
 style_net1 = [
     # Noting down names
     {'selector': '.notes',
-     'style': {'background-color': 'white', 'font-size': 18,
+     'style': {'background-color': 'white', 'font-size': styles.CLPM_NODE_LABEL,
                'content': 'data(label)', 'color': 'k', 'font-weight': 'bold', 'text-halign': 'left',
                'text-valign': 'center', 'text-wrap': 'wrap'}},
 
     # Nodes - shape & color
     {'selector': '.observed',
-     'style': {'shape': 'rectangle', 'height': 40, 'width': 80, 'border-width': 2, 'background-color': 'white',
-               'border-color': 'k',
+     'style': {'shape': 'rectangle', 'height': styles.CLPM_NODE_SIZE*2, 'width': styles.CLPM_NODE_SIZE*4,
+               'border-width': 2, 'background-color': 'white', 'border-color': 'k',
                'content': 'data(firstname)', 'color': 'grey', 'text-halign': 'center', 'text-valign': 'center',
                'text-wrap': 'wrap'}},
 
     {'selector': '.latent',
-     'style': {'shape': 'round', 'height': 20, 'width': 20, 'border-width': 1, 'background-color': 'white',
-               'border-color': 'silver'}},
+     'style': {'shape': 'round', 'height': styles.CLPM_NODE_SIZE, 'width': styles.CLPM_NODE_SIZE,
+               'border-width': 1, 'background-color': 'white', 'border-color': 'silver'}},
 
     # Edges
     {'selector': 'edge[firstname *= "direct"]',  # directed paths
@@ -341,20 +344,20 @@ style_net1 = [
     # Correlations
     {'selector': 'edge[firstname *= "eta_corr"]',
      'style': {'curve-style': 'unbundled-bezier', 'target-arrow-shape': 'vee', 'source-arrow-shape': 'vee', 'width': 1,
-               'control-point-distances': [-450, -520, -530, -520, -450],
+               'control-point-distances': [-width*.45, -width*.52, -width*.53, -width*.53, -width*.45],
                'control-point-weights': [0.01, 0.20, 0.5, 0.80, 0.99],
-               'label': 'data(label)', 'font-size': 15, 'text-background-color': 'silver',
+               'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
                'text-background-opacity': .7}},
 
     {'selector': 'edge[firstname *= "imp_corr"]',
      'style': {'curve-style': 'unbundled-bezier', 'target-arrow-shape': 'vee', 'source-arrow-shape': 'vee', 'width': 1,
-               'label': 'data(label)', 'font-size': 15, 'text-background-color': 'silver',
+               'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
                'text-background-opacity': .7}},
 
     # Lambdas
     {'selector': 'edge[firstname *= "lambda"]',
      'style': {'curve-style': 'straight', 'target-arrow-shape': 'vee', 'width': 1, 'arrow-scale': .8,
-               'label': 'data(label)', 'font-size': 15, 'text-background-color': 'silver',
+               'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
                'text-background-opacity': .7}},
 
     # Dashed lines
@@ -367,13 +370,15 @@ d = {'AR': ['red', 40], 'maAR': ['orange', 70], 'CL': ['green', 220], 'maCL': ['
 for c in d.keys():
     style_net1.extend([{'selector': f'[label *= "{c}"][sign > 0]',
                        'style': {'line-color': d[c][0], 'target-arrow-color': d[c][0],
-                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1], 'font-size': 20,
+                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1],
+                                 'font-size': styles.CLPM_EDGE_LABEL*1.25,
                                  'font-weight': 'bold',
                                  'text-background-color': d[c][0], 'text-background-opacity': .5}},
                       {'selector': f'[label *= "{c}"][sign < 1]',
                        'style': {'line-style': 'dashed', 'width': 1.5,
                                  'line-color': d[c][0], 'target-arrow-color': d[c][0],
-                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1], 'font-size': 18,
+                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1],
+                                 'font-size': styles.CLPM_EDGE_LABEL,
                                  'text-background-color': d[c][0], 'text-background-opacity': .5}}
                        ])
 

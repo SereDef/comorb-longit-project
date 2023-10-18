@@ -3,6 +3,7 @@ import os
 import pyreadr
 import textwrap
 
+import definitions.layout_styles as styles
 from definitions.general_funcs import get_label
 
 PATH = './assets/results/mod3/'
@@ -17,7 +18,8 @@ time_marks3 = dict()
 for t in times:
     where = round(np.mean([float(n) for n in t.split('-')]), 1)
     time_marks3[where] = {'label': f'\n{t} years',
-                          'style': {'transform': 'rotate(45deg)', 'whitespace': 'nowrap'}}  # 'color': '#f50'
+                          'style': {'transform': 'rotate(45deg)', 'whitespace': 'nowrap',
+                                    'font-size': styles.CSNM_NODE_LABEL*.8}}  # 'color': '#f50'
 
 
 # -- Backend ---------------------
@@ -48,8 +50,8 @@ def read_res3(time, path=PATH):
     # layout computed by qgraph (spring algorithm)
     lay = res['layout'].rename(columns={0: 'x_og', 1: 'y_og'})
     # rescale to pixels
-    lay['x'] = np.interp(lay['x_og'], (lay['x_og'].min(), lay['x_og'].max()), (0, 700))
-    lay['y'] = np.interp(lay['y_og'], (lay['y_og'].min(), lay['y_og'].max()), (0, 700))
+    lay['x'] = np.interp(lay['x_og'], (lay['x_og'].min(), lay['x_og'].max()), (0, styles.CSNM_WIDTH))
+    lay['y'] = np.interp(lay['y_og'], (lay['y_og'].min(), lay['y_og'].max()), (0, styles.CSNM_WIDTH))
 
     return wm, ci, fit, lay
 
@@ -82,7 +84,9 @@ def make_net3(timepoint):
     return network, ci_tab
 
 
-style_net3 = [{'selector': 'node', 'style': {'label': 'data(label)', 'text-wrap': 'wrap'}},
+style_net3 = [{'selector': 'node', 'style': {'height': styles.CSNM_NODE_SIZE, 'width': styles.CSNM_NODE_SIZE,
+                                             'label': 'data(label)', 'text-wrap': 'wrap',
+                                             'font-size': styles.CSNM_NODE_LABEL}},
               # Edge opacity and width
               {'selector': 'edge', 'style': {'opacity': 'data(weight)', 'width': 'data(width)'}},
               # Color nodes by group

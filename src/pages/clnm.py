@@ -23,7 +23,7 @@ layout = dbc.Row([
                     # Contemporaneous network
                     display_column2('c', '36vw'),
                     # Between person network
-                    display_column2('b', '65vw')
+                    display_column2('b', '66vw')
                 ])
             ])
 ])

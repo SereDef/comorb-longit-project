@@ -18,7 +18,7 @@ all_desc = pd.read_csv('./assets/descdf.csv', index_col=0)
 age_desc = all_desc[list(all_desc.columns[all_desc.columns.str.contains('age')])]
 
 
-def plot_overview(width=1600, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
+def plot_overview(width, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol', 'canabis', 'smoking')):
     """Input: dimensions (optional).
        Creates an interactive scatterplot figure with time of measurement on the x-axis and all measures on the y-axis.
        Markers indicate the median age at measurement [+/- 95% CI in age range].
@@ -108,10 +108,11 @@ def plot_overview(width=1600, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol'
 
     for g in cmrgroups:
         y1 = y0 + cmrgroups[g][0]
-        cmrgrouplabels.append(dict(x0=-0.125, x1=-0.13, xref='paper',
+        cmrgrouplabels.append(dict(x0=-width/10000-.010, x1=-width/10000-.005, xref='paper',
                                    y0=y0, y1=y1 - 0.25, yref='y2',
                                    type='rect', fillcolor=cmrgroups[g][1], opacity=.3, line_width=0,
-                                   label=dict(text=f'<b>{g}    </b>', textposition='top right', padding=2)
+                                   label=dict(text=f'<b>{g}    </b>', textposition='top right', padding=2,
+                                              font=styles.OVERVIEW_LABELS)
                                    ))
         y0 = y1 + 0.05
 
@@ -121,8 +122,12 @@ def plot_overview(width=1600, exclude_cmr=('BMI', 'FMI', 'LMI', 'TFI', 'alcohol'
     fig.update_yaxes(mirror=True, ticks='inside', linecolor='black')
 
     fig.update_layout(autosize=False, width=width, height=width*.55,
-                      yaxis1=dict(range=(12.7, -0.7)), yaxis2=dict(range=(24.7, -0.7), ),
-                      xaxis2=dict(title='Child age (years)'),
+                      yaxis1=dict(range=(12.7, -0.7), tickfont=styles.OVERVIEW_LABELS),
+                      yaxis2=dict(range=(24.7, -0.7), tickfont=styles.OVERVIEW_LABELS),
+                      xaxis1=dict(tickfont=styles.OVERVIEW_LABELS),
+                      xaxis2=dict(tickfont=styles.OVERVIEW_LABELS,
+                                  title='Child age (years)', titlefont=styles.OVERVIEW_LABELS),
+                      hoverlabel=dict(font_size=styles.OVERVIEW_LABELS['size']),
                       shapes=cmrgrouplabels, plot_bgcolor='white', margin=dict(l=20, r=20, t=20, b=20),
                       legend=dict(orientation='h', entrywidth=300, font=dict(size=16),
                                   yanchor='bottom', y=1.02, xanchor='left', x=0))
@@ -146,8 +151,7 @@ layout = dbc.Row([
                          style=styles.TEXT),
                 html.Hr(),
 
-                dcc.Graph(  # style={'width': '1000vw', 'height': '100vw'},
-                          id='overview-fig',
-                          figure=plot_overview(width=1700))
+                dcc.Graph(id='overview-fig',  # style={'width': '1000vw', 'height': '100vw'},
+                          figure=plot_overview(width=styles.OVERVIEW_WIDTH))
                 ])
 ])
