@@ -80,7 +80,7 @@ def read_res2(which_net, path='./assets/results/mod2/'):
        - t_cent/c_cent/b_cent:: 95% confidence intervals for those weights
        Use: fit, lay, wm, ci = read_res2(t')
     """
-    res = pyreadr.read_r(f'{path}unpruned.RData')
+    res = pyreadr.read_r(f'{path}unpruned_norm.RData')
 
     fit = res['fit']
 

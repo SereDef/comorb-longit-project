@@ -62,11 +62,11 @@ def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT[
                                                  'value': f'{p}AR_cmr'},
                                                 {'label': html.Span(
                                                     [badge_it(f'{pref}CL', cols[1], badgefont),
-                                                    ' depression \u290F cardio-metab.']),
+                                                     ' depression \u290F cardio-metab.']),
                                                  'value': f'{p}CL_dep'},
                                                 {'label': html.Span(
                                                     [badge_it(f'{pref}CL', cols[1], badgefont),
-                                                    ' cardio-metab. \u290F depression']),
+                                                     ' cardio-metab. \u290F depression']),
                                                  'value': f'{p}CL_cmr'}],
                                             value=val,
                                             style=styles.TEXT,
@@ -86,8 +86,9 @@ def make_button(label, id_name, color, margin='15px', fs=styles.TEXT['font-size'
 model_structure = pd.read_csv('./assets/model_structure.csv').set_index('Unnamed: 0')
 
 
-def read_res1(depname, cmrname, path='./assets/results/mod1/'):
-    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR) marker.
+def read_res1(depname, cmrname, lambdas='free', param='stat', path='./assets/results/mod1/'):
+    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
+       marker, + stationarity assumptions for lambdas and long term parameters ('free' vs. 'stat').
        Open the .RData file created by Rscript 1.GCLPM (one for dep-cmr marker pair).
        This contains the following elements:
        - summ: a summary dataframe (with information about which marker is used, the timepoints included
@@ -98,7 +99,7 @@ def read_res1(depname, cmrname, path='./assets/results/mod1/'):
        - failed: list of models that did not converge, with corresponding error or warning message.
        Use: summ, fitm, esti, fail = read_res1('sDEP','FMI') -OR- summ = read_res1('sDEP','BMI')[0]
     """
-    res = pyreadr.read_r(f'{path}{depname}_{cmrname}.RData')
+    res = pyreadr.read_r(f'{path}l{lambdas}_p{param}/{depname}_{cmrname}.RData')
 
     summ = res['dat_summ']
     fitm = res['fit_meas'].T
@@ -111,7 +112,8 @@ def read_res1(depname, cmrname, path='./assets/results/mod1/'):
 
 
 def best_fit1(depname, cmrname, list1=None):
-    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR) marker.
+    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
+       marker.
        By default, returns a dataframe with the model name (indicating the excluded parameters) and structure (0,1...).
        When list1 is provided, returns the list of long-term (list1='lt') or short-term (list1='ma') parameters
        estimated in the model.
@@ -119,7 +121,7 @@ def best_fit1(depname, cmrname, list1=None):
     fitm = read_res1(depname, cmrname)[1]
 
     # Best fitting model (lowest AIC)
-    mod = fitm.index[fitm.aic == fitm.aic.min()][0]
+    mod = fitm.index[fitm.bic == fitm.bic.min()][0]
     if list1:  # Return list of parameters estimated in the model
         return list(model_structure.index[(model_structure[mod] > 0) & (model_structure.index.str.contains(list1))])
     else:  # Return a dataframe with its name and model structure
@@ -127,7 +129,8 @@ def best_fit1(depname, cmrname, list1=None):
 
 
 def make_plot1(depname, cmrname):
-    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR) marker.
+    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
+       marker.
        Creates an interactive scatterplot figure with time of measurement on the x-axis and values of
        dep and cmr markers on the (double) y-axis. Markers indicate the median [IQR] of each measure. Median values and
        time points are also displayed when hovering over the points.
@@ -197,7 +200,7 @@ def make_plot1(depname, cmrname):
 
 
 def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr',
-              width=styles.CLPM_WIDTH):
+              net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
        Creates a list of dictionaries to use as input for the elements arg of cytoscape graph.
@@ -244,6 +247,7 @@ def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr
 
     elm = list()  # Initialize
 
+    # Variable names
     elm.append({'data': {'id': f'name_dep', 'label': 'Depression\nscore'}, 'classes': 'notes',
                 'position': {'x': 120, 'y': pos_top + obs_pos}})
     elm.append({'data': {'id': f'name_cmr', 'label': '\n'.join(textwrap.wrap(get_label(cmrname), width=10))},
@@ -253,7 +257,7 @@ def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr
     for eta, pos in enumerate([pos_top, pos_bot]):
         # Eta factors nodes
         elm.append({'data': {'id': f'eta{eta}', 'label': 'Eta'}, 'classes': 'latent',
-                    'position': {'x': width / 2 + rshift, 'y': pos}})
+                    'position': {'x': net_width / 2 + rshift, 'y': pos}})
 
     #  Eta factors correlations
     elm.append({'data': {'source': 'eta0', 'target': 'eta1', 'firstname': 'eta_corr',
@@ -261,7 +265,8 @@ def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr
 
     for i in range(1, nt + 1):
 
-        elm.append({'data': {'source': f'imp_dep{i}', 'target': f'imp_cmr{i}', 'firstname': 'imp_corr',
+        imp_ = 'imp_' if i > 1 else ''
+        elm.append({'data': {'source': f'{imp_}dep{i}', 'target': f'{imp_}cmr{i}', 'firstname': 'imp_corr',
                              'label': '%.2f' % extr_est(which=i - 1, imp_corr=True)[0]}})
 
         for eta, v in enumerate(vs):
@@ -270,52 +275,56 @@ def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr
             # define vertical position
             p = [pos_top + obs_pos, pos_top + imp_pos] if v == 'dep' else [pos_bot - obs_pos, pos_bot - imp_pos]
 
-            elm.extend([
-                # Observed variables
+            # Observed variables
+            elm.append(
                 {'data': {'id': f'{v}{i}', 'firstname': f'{v.upper()}\n{timedic[v + str(i)]} yrs',
                           'label': summ.columns[(i - 1) + (nt * eta)]},
                  'classes': 'observed',
-                 'position': {'x': ((width / nt) * i) - (width / nt) / 2 + rshift, 'y': p[0]}},
-                # Impulses
-                {'data': {'id': f'imp_{v}{i}', 'label': f'impulse {i}'},
-                 'classes': 'latent',
-                 'position': {'x': ((width / nt) * i) - (width / nt) / 2 + rshift, 'y': p[1]}}
-            ])
+                 'position': {'x': ((net_width / nt) * i) - (net_width / nt) / 2 + rshift, 'y': p[0]}})
 
-            # ===== Edges: lambdas
+            # Impulses
+            if i > 1:
+                elm.append(
+                    {'data': {'id': f'imp_{v}{i}', 'label': f'impulse {i}'},
+                     'classes': 'latent',
+                     'position': {'x': ((net_width / nt) * i) - (net_width / nt) / 2 + rshift, 'y': p[1]}})
+                # impulses links
+                elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{v}{i}', 'firstname': 'imp_link'}})
+
+            # ===== Edges =====
+            # lambdas
             elm.append({'data': {'source': f'eta{eta}', 'target': f'{v}{i}', 'firstname': 'lambda',
                                  'label': '%.2f' % extr_est(f'{v}', i - 1, lamb=True)[0]}})
-            # impulses link
-            elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{v}{i}', 'firstname': 'imp_link'}})
 
             if i < nt:
                 otherv = abs(eta - 1)
-                # maAR and AR terms
+                # AR and CL terms
                 if modstr[f'ltAR_{v}'].iloc[0]:
                     elm.append({'data': {'source': f'{v}{i}', 'target': f'{v}{i + 1}',
                                          'weight': '%.2f' % (extr_est(f'^AR_{v}', i - 1)[0] * (
                                                  timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}'])),
                                          'sign': extr_est(f'^AR_{v}', i - 1)[1],
                                          'label': f'AR{i}', 'firstname': 'direct'}})
-                if modstr[f'maAR_{v}'].iloc[0]:
-                    elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{v}{i + 1}',
-                                         'weight': '%.2f' % (extr_est(f'^maAR_{v}', i - 1)[0] / (
-                                                 timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}'])),
-                                         'sign': extr_est(f'^maAR_{v}', i - 1)[1],
-                                         'label': f'maAR{i}', 'firstname': 'direct'}})
-                # maCL and CL terms
                 if modstr[f'ltCL_{v}'].iloc[0]:
-                    elm.append({'data': {'source': f'{v}{i}', 'target': f'{vs[otherv]}{i + 1}',
+                    elm.append({'data': {'source': f'{vs[otherv]}{i}', 'target': f'{v}{i + 1}',
                                          'weight': '%.2f' % (extr_est(f'^CL_{v}', i - 1)[0] * (
-                                                 timedic[f'{vs[otherv]}{i + 1}'] - timedic[f'{v}{i}'])),
+                                                 timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}'])),
                                          'sign': extr_est(f'^CL_{v}', i - 1)[1],
                                          'label': f'CL{i}', 'firstname': 'direct'}})
-                if modstr[f'maCL_{v}'].iloc[0]:
-                    elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{vs[otherv]}{i + 1}',
-                                         'weight': '%.2f' % (extr_est(f'^maCL_{v}', i - 1)[0] / (
-                                                 timedic[f'{vs[otherv]}{i + 1}'] - timedic[f'{v}{i}'])),
-                                         'sign': extr_est(f'^maCL_{v}', i - 1)[1],
-                                         'label': f'maCL{i}', 'firstname': 'direct'}})
+                # ma AR and maCL terms
+                if i > 1:
+                    if modstr[f'maAR_{v}'].iloc[0]:
+                        elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{v}{i + 1}',
+                                             'weight': '%.2f' % (extr_est(f'^maAR_{v}', i - 2)[0] / (
+                                                     timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}'])),
+                                             'sign': extr_est(f'^maAR_{v}', i - 2)[1],
+                                             'label': f'maAR{i}', 'firstname': 'direct'}})
+                    if modstr[f'maCL_{v}'].iloc[0]:
+                        elm.append({'data': {'source': f'imp_{vs[otherv]}{i}', 'target': f'{v}{i + 1}',
+                                             'weight': '%.2f' % (extr_est(f'^maCL_{v}', i - 2)[0] / (
+                                                     timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}'])),
+                                             'sign': extr_est(f'^maCL_{v}', i - 2)[1],
+                                             'label': f'maCL{i}', 'firstname': 'direct'}})
     return elm
 
 
