@@ -2,6 +2,21 @@
 # ============= 1. GENERALIZED CROSS-LAG PANEL MODEL (GCLPM) ===================
 # ==============================================================================
 
+# args = commandArgs(trailingOnly = TRUE) # provide access to a copy of the command line arguments supplied
+# 
+# if (length(args) == 0) {
+#   stop("Supply output folder name!")
+# } else {
+#   out_folder <- args[1] # e.g. 'mod1_lfree_pstat' # lambda free, parameters stationary
+# }
+
+# Set parameters
+out_folder = '../results/mod1_lfree_pstat'
+dir.create(out_folder)
+
+fix_lambdas = !(grepl('lfree', out_folder)) # heterogeneity allowed to vary over time 
+stationarity = !(grepl('pfree', out_folder)) # model long term effects stationary over time 
+
 # Load dependencies
 invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE));
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
@@ -9,17 +24,13 @@ invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE
 # Read in data
 data <- readRDS('../mats/raw_data.rds')
 
-# ------------------------------------------------------------------------------
+# ==============================================================================
 # -------------------------- Set-up and functions ------------------------------
-# ------------------------------------------------------------------------------
-
-stationarity = T # model long term effects as stationary over time 
-
-# parallel::detectCores()
+# ==============================================================================
 
 # All possible combinations of the 8 main parameters
 m = t(expand.grid(lapply(numeric(8), function(x) c(1, 0)))) 
-m = m[, colSums(m)>3] # remove some combinations (e.g. less than 4 parameters in the model)
+m = m[, colSums(m)>1] # remove some combinations (e.g. less than 2 parameters in the model)
 # order by number of parameters included and rename 
 mat = data.frame( m[,order(colSums(-m))], 
                   row.names = c('maCL_dep','maCL_cmr','maAR_dep','maAR_cmr',
@@ -34,23 +45,10 @@ names(mat) <- nms
 rm(m, nmat, nms, r)
 
 # Remove some comparisons, to speed up processing: e.g., always estimate long term AR terms
-mat <- mat[, !grepl('ltAR', names(mat))] # --> 57 models
+mat <- mat[, -grep('ltAR', names(mat))] # --> 64 models
 
 write.csv(mat, '../mats/model_structure.csv')
 
-## Construct matrix determining all possible model structures -------------------
-# m = t(expand.grid(lapply(numeric(4), function(x) c(1, 0)))) # all possible combinations
-# m1 = matrix(1, 4, 12) # matrix of 4x12 ones to append later
-# # remove combinations not used and reorder
-# m0 = m[, colSums(m)!=1]; m0 = m0[,order(colSums(-m0))] # dim = 4x12
-# # Construct the full matrix and rename rows and columns 
-# mat = data.frame( cbind( rbind(m0,m1), rbind(m1[,-1], m0[,-1])), 
-#                   row.names = c('maCL_dep','maCL_cmr','maAR_dep','maAR_cmr',
-#                                 'ltCL_dep','ltCL_cmr','ltAR_dep','ltAR_cmr'))
-# names(mat) <- c('full_st','no_maCL_dep','no_maCL_cmr','no_maAR_dep','no_maAR_cmr',
-#                 'no_maCL','no_ma_dep','no_ma_CLcmr_ARdep','no_ma_CLdep_ARcmr','no_ma_cmr','no_maAR','no_ma',
-#                 'no_ltCL_dep','no_ltCL_cmr','no_ltAR_dep','no_ltAR_cmr','no_ltCL','no_lt_dep',
-#                 'no_lt_CLcmr_ARdep','no_lt_CLdep_ARcmr','no_lt_cmr','no_ltAR' ,'no_lt') 
 # ------------------------------------------------------------------------------
 
 ## Select subsets of data (i.e., which variables and timepoints)
@@ -104,20 +102,41 @@ make_df <- function(dep_name, dep_times, cmr_name, cmr_times, verbose=T) {
 }
 
 ## Specify the formula for the model (used in run_sem)
-formula <- function(dep_temp, cmr_temp, mod='full') { # stationarity = T # just set it to true when full model is eastimated
+clpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(), c()), 
+                         mod='full', fix_lambdas=FALSE, stationarity=FALSE) {
+  
+  # Input check ----------------------------------------------------------------
+  if (is.null(n_ocs) & length(meas_time[[1]])==0) { # user did not provide number or timepoints
+    stop('Provide number of occasions or time points of measurement!') }
+  
+  if (length(meas_time[[1]]) != length(meas_time[[2]])) { # contraddictory info 
+    stop('You need the same number of time points for each of the two variables.') }
+  
+  if (!is.null(n_ocs) & !length(meas_time[[1]]) %in% c(0, n_ocs)) { # contraddictory info 
+    stop('Number of occations and measurement times provided do not agree.') }
+  
+  # ----------------------------------------------------------------------------
   # How many occasions 
-  n_ocs = length(dep_temp)+1
+  if (length(meas_time[[1]])>0) { 
+    temp_var1 = meas_time[[1]]
+    temp_var2 = meas_time[[2]] 
+    
+  } else { temp_var1 = temp_var2 = rep(1, n_ocs) }
+  
+  if (is.null(n_ocs)) { n_ocs = length(temp_var1) }
+  
   # Define model structure according to mat matrix
   for (r in row.names(mat)) {
     if (mat[mod][r,]==0) { assign(gsub('lt','', tolower(r)),'0') } else { assign(gsub('lt','', tolower(r)), gsub('lt','', r)) }
   }
-  # if (fix_lambda1) { l1='' } else { l1 = 'NA*'}
-  # first loading is freely estimated and last one if fixed to 1 
-  unit_effects = paste0('# Unit effects\neta_dep =~ NA*', paste0('dep', 1:(n_ocs-1), collapse=' + '), paste0(' + 1*dep',n_ocs), '\n',
-                                        'eta_cmr =~ NA*', paste0('cmr', 1:(n_ocs-1), collapse=' + '), paste0(' + 1*cmr',n_ocs), '\n') 
+  
+  unit_effects = paste0('# Unit effects\n',
+                        'eta_',var1,' =~ ', paste0('l',1:(n_ocs),'*',var1,1:(n_ocs), collapse=' + '), '\n',
+                        'eta_',var2,' =~ ', paste0('l',1:(n_ocs),'*',var2,1:(n_ocs), collapse=' + '), '\n') 
+  
   impulses = '# Impulses\n'
-  for (i in 1:n_ocs) { impulses = paste0(impulses, 'u_dep',i,' =~ dep',i,'\ndep',i,' ~~ 0*dep',i,'\n') }
-  for (i in 1:n_ocs) { impulses = paste0(impulses, 'u_cmr',i,' =~ cmr',i,'\ncmr',i,' ~~ 0*cmr',i,'\n') }
+  for (i in 2:n_ocs) { impulses = paste0(impulses, 'u_',var1,i,' =~ ',var1,i,'\n',var1,i,' ~~ 0*',var1,i,'\n') }
+  for (i in 2:n_ocs) { impulses = paste0(impulses, 'u_',var2,i,' =~ ',var2,i,'\n',var2,i,' ~~ 0*',var2,i,'\n') }
   
   regressions = '# Regressions\n'
   
@@ -125,97 +144,113 @@ formula <- function(dep_temp, cmr_temp, mod='full') { # stationarity = T # just 
     # assign different name to each parameter unless it was set to 0
     if (ar_dep!=0) { ar_depi = paste0(ar_dep,i-1) } else { ar_depi = ar_dep }
     if (cl_dep!=0) { cl_depi = paste0(cl_dep,i-1) } else { cl_depi = cl_dep }
-    if (maar_dep!=0) { maar_depi = paste0(maar_dep,i-1) } else { maar_depi = maar_dep }
-    if (macl_dep!=0) { macl_depi = paste0(macl_dep,i-1) } else { macl_depi = macl_dep }
-    # Add depression regressions
-    regressions = paste0(regressions, 
-    'dep',i,' ~ ',ar_depi,'*dep',i-1,' + ',cl_depi,'*cmr',i-1,' + ',maar_depi,'*u_dep',i-1,' + ',macl_depi,'*u_cmr',i-1,'\n') }
-  
-  for (i in n_ocs:2) {
-    # assign different name to each parameter unless it was set to 0
     if (ar_cmr!=0) { ar_cmri = paste0(ar_cmr,i-1) } else { ar_cmri = ar_cmr }
     if (cl_cmr!=0) { cl_cmri = paste0(cl_cmr,i-1) } else { cl_cmri = cl_cmr }
-    if (maar_cmr!=0) { maar_cmri = paste0(maar_cmr,i-1) } else { maar_cmri = maar_cmr }
-    if (macl_cmr!=0) { macl_cmri = paste0(macl_cmr,i-1) } else { macl_cmri = macl_cmr }
-    # Add cardiometabolic regressions
+    
+    if (i > 2) { # No MA terms because no impulses at first occasion
+      
+      if (maar_dep!=0) { maar_depi = paste0(maar_dep,i-1) } else { maar_depi = maar_dep }
+      if (macl_dep!=0) { macl_depi = paste0(macl_dep,i-1) } else { macl_depi = macl_dep }
+      if (maar_cmr!=0) { maar_cmri = paste0(maar_cmr,i-1) } else { maar_cmri = maar_cmr }
+      if (macl_cmr!=0) { macl_cmri = paste0(macl_cmr,i-1) } else { macl_cmri = macl_cmr }
+      
+      ma_terms_var1 = paste0(' + ',maar_depi,'*u_',var1,i-1,' + ',macl_depi,'*u_',var2,i-1) 
+      ma_terms_var2 = paste0(' + ',maar_cmri,'*u_',var2,i-1,' + ',macl_cmri,'*u_',var1,i-1) 
+      
+    } else { ma_terms_var1 = ma_terms_var2 = '' }
+    
+    # Add depression regressions
     regressions = paste0(regressions, 
-    'cmr',i,' ~ ',cl_cmri,'*dep',i-1,' + ',ar_cmri,'*cmr',i-1,' + ',macl_cmri,'*u_dep',i-1,' + ',maar_cmri ,'*u_cmr',i-1,'\n') }
+                         var1,i,' ~ ',ar_depi,'*',var1,i-1,' + ',cl_depi,'*',var2,i-1, ma_terms_var1,'\n',
+                         var2,i,' ~ ',ar_cmri,'*',var2,i-1,' + ',cl_cmri,'*',var1,i-1, ma_terms_var2,'\n') 
+  }
   
-  comevement = '# Comovement\n'
-  for (i in 1:n_ocs) { comevement = paste0(comevement,'u_dep',i,' ~~ comv',i,'*u_cmr',i,'\n')}
+  comevement = '# Comovement\ndep1 ~~ comv1*cmr1\n' # first occasion no impulse
+  for (i in 2:n_ocs) { comevement = paste0(comevement,'u_',var1,i,' ~~ comv',i,'*u_',var2,i,'\n')}
   
   restrictions = '# Restrictions\n'
-  for (i in 1:n_ocs) { 
-    if (i < n_ocs) { ar = paste0(' + 0*u_dep', seq(i+1, n_ocs), collapse='') } else { ar = ''}
-    restrictions = paste0(restrictions, 'u_dep',i,' ~~ 0*eta_dep + 0*eta_cmr',ar, ' + ',
-                          paste0('0*u_cmr',c(1:n_ocs)[-i], collapse=' + '), '\n') }
-  for (i in 1:n_ocs) {  
-    if (i < n_ocs) { ar = paste0(' + 0*u_cmr', seq(i+1, n_ocs), collapse='') } else { ar = ''}
-    restrictions = paste0(restrictions, 'u_cmr',i,' ~~ 0*eta_dep + 0*eta_cmr', ar, '\n') }
+  for (i in 2:n_ocs) { 
+    if (i < n_ocs) { ar = paste0(' + 0*u_',var1, seq(i+1, n_ocs), collapse='') } else { ar = ''}
+    restrictions = paste0(restrictions, 'u_',var1,i,' ~~ 0*eta_',var1,' + 0*eta_',var2, ar, ' + ',
+                          paste0('0*u_',var2,c(2:n_ocs)[-(i-1)], collapse=' + '), '\n') }
+  for (i in 2:n_ocs) {  
+    if (i < n_ocs) { ar = paste0(' + 0*u_',var2, seq(i+1, n_ocs), collapse='') } else { ar = ''}
+    restrictions = paste0(restrictions, 'u_',var2,i,' ~~ 0*eta_',var1,' + 0*eta_',var2, ar, '\n') }
+  
+  constraints = '# Constraints\n'
+  
+  if (fix_lambdas) {
+    for (i in 1:n_ocs) { constraints = paste0(constraints, 'l',i,' == 1\n') }
+  } # else { constraints = paste0(constraints, 'l',n_ocs,' == 1\n') } # only last lambda is set to 1
+  
+  ar_dep_con = ar_cmr_con = cl_dep_con = cl_cmr_con = ''
   
   if (stationarity) {
-    constraints = '# Constraints\n'
-    for (i in 2:(n_ocs-1)) {
-      ar_dep_con = paste0('AR_dep',i,' == (AR_dep1)/',dep_temp[i]/dep_temp[1],'\n')
-      ar_cmr_con = paste0('AR_cmr',i,' == (AR_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n')
-      if (cl_dep!=0) { cl_dep_con = paste0('CL_dep',i,' == (CL_dep1)/',dep_temp[i]/dep_temp[1],'\n') } else { cl_dep_con = ''}
-      if (cl_cmr!=0) { cl_cmr_con = paste0('CL_cmr',i,' == (CL_cmr1)/',cmr_temp[i]/cmr_temp[1],'\n') } else { cl_cmr_con = ''}
-      constraints = paste0(constraints, ar_dep_con, ar_cmr_con, cl_dep_con, cl_cmr_con)
+    rel='*'
+    for (i in 1:(n_ocs-1)) {
+      for (o in c(1:(n_ocs-1))[-i]) {
+        
+        ar_dep_con = paste0(ar_dep_con, 'AR_',var1,i,rel,temp_var1[i+1]-temp_var1[i],' == AR_',var1,o,rel,temp_var1[o+1]-temp_var1[o],'\n')
+        ar_cmr_con = paste0(ar_cmr_con, 'AR_',var2,i,rel,temp_var2[i+1]-temp_var2[i],' == AR_',var2,o,rel,temp_var2[o+1]-temp_var2[o],'\n')
+        
+        if (cl_dep!=0) { cl_dep_con = paste0(cl_dep_con, 'CL_',var1,i,rel,temp_var1[i+1]-temp_var2[i],
+                                             ' == CL_',var1,o,rel,temp_var1[o+1]-temp_var2[o],'\n') }
+        if (cl_cmr!=0) { cl_cmr_con = paste0(cl_cmr_con, 'CL_',var2,i,rel,temp_var2[i+1]-temp_var1[i],
+                                             ' == CL_',var2,o,rel,temp_var2[o+1]-temp_var1[o],'\n') }
+      }
+      
     }
-  } else { constraints = '' }
-  
+    constraints = paste0(constraints, ar_dep_con, ar_cmr_con, cl_dep_con, cl_cmr_con)
+  }
   f = paste0(unit_effects, impulses, regressions, comevement, restrictions, constraints)
   return(f)
 }
 
 ## Save model output as a graph in .png format (used in run_sem)
 save_semgraph <- function(model, n_ocs, name) {
-  # TODO: cannot make it work with do.call...
-  # nodes = c('eta_dep',rep('',n_ocs-1), paste0('dep',1:n_ocs), paste0('u_dep',1:n_ocs), 
-  #           paste0('u_cmr',1:n_ocs), paste0('cmr',1:n_ocs), 'eta_cmr', rep('',n_ocs-1))
-  # Specify the node structure
-  if (n_ocs == 6) {
-    lay = tidySEM::get_layout('eta_dep', '', '', '', '', '', 
-                              'dep1', 'dep2', 'dep3', 'dep4', 'dep5', 'dep6', 
-                              'u_dep1', 'u_dep2', 'u_dep3', 'u_dep4', 'u_dep5', 'u_dep6', 
-                              'u_cmr1', 'u_cmr2', 'u_cmr3', 'u_cmr4', 'u_cmr5', 'u_cmr6', 
-                              'cmr1', 'cmr2', 'cmr3', 'cmr4', 'cmr5', 'cmr6', 
-                              'eta_cmr', '', '', '', '', '', rows=6)
-  } else if (n_ocs == 4) {
-    lay = tidySEM::get_layout('eta_dep', '', '', '', 
-                              'dep1', 'dep2', 'dep3', 'dep4', 
-                              'u_dep1', 'u_dep2', 'u_dep3', 'u_dep4',
-                              'u_cmr1', 'u_cmr2', 'u_cmr3', 'u_cmr4', 
-                              'cmr1', 'cmr2', 'cmr3', 'cmr4',
-                              'eta_cmr', '', '', '', rows=6)
-  } else { cat('Too few occasions!\n') }
+  
+  args = list('eta_dep', '', '', '', '', '', 
+              'dep1', 'dep2', 'dep3', 'dep4', 'dep5', 'dep6', 
+              ' ', 'u_dep2', 'u_dep3', 'u_dep4', 'u_dep5', 'u_dep6', 
+              ' ', 'u_cmr2', 'u_cmr3', 'u_cmr4', 'u_cmr5', 'u_cmr6', 
+              'cmr1', 'cmr2', 'cmr3', 'cmr4', 'cmr5', 'cmr6', 
+              'eta_cmr', '', '', '', '', '', rows=6)
+  
+  lay = rlang::exec(tidySEM::get_layout, !!!args)
+  
+  lay = as.matrix(lay[, 1:n_ocs])
   
   # Remove edges estimated or set to 0.00 for readability
   e = get_edges(model); e$show[e$label=='0.00'] <- FALSE
   # Create graph 
-  p = tidySEM::graph_sem(model = model, layout = lay, edges=e)
+  p = tidySEM::graph_sem(model = model, layout = lay, edges = e)
   # Save image
-  ggplot2::ggsave(paste0('../results/mod1_graphs/',name,'.png'), p, device = "png", width= 20, height = 15)
+  dir.create(paste0(out_folder,'_graphs'))
+  ggplot2::ggsave(paste0(out_folder,'_graphs/',name,'.png'), p, device = "png", width= 20, height = 15)
 }
 
-## Fit a single SEM model (used in run_model)
-run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name) {
+## Fit a single SEM model (used in run_all_models)
+run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name, 
+                    normalize=TRUE, plot_semgraph=FALSE) {
   cat('- ', which(names(mat)==mod), mod)
   
-  normalize <- function(x, ...) {
-    return( (x - min(x,...)) / (max(x,...) - min(x,...)) )
+  if (normalize) { 
+    minmax_norm <- function(x, ...) { return( (x - min(x,...)) / (max(x,...) - min(x,...)) )}
+    data <- sapply(data, minmax_norm, na.rm = TRUE) 
   }
-  
-  normdata <- sapply(data, normalize, na.rm = TRUE)
   
   # Run model
   set.seed(310896)
-  m <- lavaan::sem(formula(dep_temp, cmr_temp, mod), normdata, missing='fiml', se ='robust',
+  m <- lavaan::sem(clpm_formula(meas_time=list(dep_temp, cmr_temp), mod=mod, 
+                                stationarity=stationarity, fix_lambdas=fix_lambdas), 
+                   data, missing='fiml', se ='robust',
                    verbose=FALSE)
   
   if (lavInspect(m, "converged")){
-    # Print out the layout 
-    save_semgraph(m, n_ocs=ncol(data)/2, name=paste(substr(dep_name,1,4),cmr_name,mod, sep='_'))
+    if (plot_semgraph) {
+      # Print out the layout 
+      save_semgraph(m, n_ocs=ncol(data)/2, name=paste(substr(dep_name,1,4),cmr_name,mod, sep='_'))
+    }
   } else {
     # Return warning message ( overwrites the model object )
     m <- paste(gsub('lavaan WARNING:', '', names(warnings())), collapse='\n') }
@@ -223,8 +258,9 @@ run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name) {
   return(m)
 }
 
-## Run the analyses! 
-run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=names(mat), verbose=FALSE){
+## Run the 64 SEM models in parallel :)
+run_all_models <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=names(mat), 
+                           verbose=FALSE){
   # Make dataframe
   d <- make_df(dep_name, dep_times, cmr_name, cmr_times, verbose=verbose)
   if (verbose) { print(summary(d$data)) }
@@ -243,7 +279,7 @@ run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=nam
   # Run this bitch (in parallel)
   start <- Sys.time(); cat(' started at: ', as.character(start), '\n') 
   fits <- mapply(run_sem, mod=which_models, # parallel::mc
-                 MoreArgs=list(data=d$data, dep_temp=d$dep_time, cmr_temp=d$cmr_time, dep_name=dep_name, cmr_name=cmr_name), 
+                 MoreArgs=list(data=d$data, dep_temp=dep_times, cmr_temp=cmr_times, dep_name=dep_name, cmr_name=cmr_name), 
                  SIMPLIFY=FALSE) # mc.cores=12)
   end <- Sys.time()
   
@@ -268,7 +304,7 @@ run_model <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=nam
       estimates <- rbind(estimates, cbind(rep(f, nrow(es)), es))    
     } 
   }
-  save(dat_summ, fit_meas, estimates, failed, file = paste0('../results/mod1/',substr(dep_name,1,4),'_',cmr_name,'.RData'))
+  save(dat_summ, fit_meas, estimates, failed, file = paste0(out_folder,'/',substr(dep_name,1,4),'_',cmr_name,'.RData'))
   
   # return(fits)
 }
@@ -350,7 +386,11 @@ models <- list(
        'waist_circ', c(9.8, 11.8, 12.8, 15.4))
 )
 
+# parallel::detectCores()
+
+
+# Run each depression / CMR marker combination in parallel =====================
 foreach(i=1:length(models)) %dopar% {
   param = models[[i]]
-  run_model(param[[1]], param[[2]], param[[3]], param[[4]])
+  run_all_models(param[[1]], param[[2]], param[[3]], param[[4]])
 }

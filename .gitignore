@@ -1,6 +1,6 @@
 .Rhistory
 .ipynb_checkpoints/
 .DS_Store
-pages/__pycache__/*
-callbacks/__pycache__/*
-definitions/__pycache__/*
+callbacks/__pycache__/
+definitions/__pycache__/
+pages/__pycache__/
