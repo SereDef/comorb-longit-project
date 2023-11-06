@@ -1,7 +1,7 @@
 from dash import Dash, html, page_container
 import dash_bootstrap_components as dbc
 
-import definitions.layout_styles as styles
+import definitions.layout_styles_local as styles
 
 from callbacks import clpm_callbacks, clnm_callbacks, csnm_callbacks
 
