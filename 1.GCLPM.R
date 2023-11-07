@@ -11,20 +11,17 @@
 # }
 
 # Set parameters
-out_folder = '../results/mod1_2_lfree_pstat'
 dir.create(out_folder)
 
 fix_lambdas = !(grepl('lfree', out_folder)) # heterogeneity allowed to vary over time 
 stationarity = !(grepl('pfree', out_folder)) # model long term effects stationary over time 
-
-remotes::install_github("yrosseel/lavaan") # for non-integer exponents 
 
 # Load dependencies
 invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE));
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
-data <- readRDS('../mats/raw_data.rds')
+data <- readRDS('./raw_data.rds')
 
 # ==============================================================================
 # -------------------------- Set-up and functions ------------------------------

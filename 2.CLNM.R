@@ -112,7 +112,7 @@ psychonetrics::CIplot(umod, ms)
 dev.off()
 
 # ==============================================================================
-# load('../results/mod2/unpruned_norm_info.RData')
+load('../results/mod2/unpruned_norm.RData')
 # ==============================================================================
 
 save_info <- function(modobj = umod, modname='unpruned_norm_info', thresh=0.01, adjecency=FALSE) {
@@ -181,9 +181,11 @@ save_info <- function(modobj = umod, modname='unpruned_norm_info', thresh=0.01, 
     # save to csv...?
   }
   
-  #save(fit, layout, t_net, c_net, b_net, 
-  #                t_cent, c_cent, b_cent, 
-  #     file = paste0('../results/mod2/',modname,'.RData'))
+  # Variance covariance matrix for the input data
+  var_cov <- cov(data[,sel(var_names, var_times)], use = 'pairwise.complete.obs')
+  
+  save(fit, layout, t_net, c_net, b_net, t_cent, c_cent, b_cent, var_cov,
+      file = paste0('../results/mod2/',modname,'.RData'))
 }
 
 save_info()
