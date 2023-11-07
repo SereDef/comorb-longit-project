@@ -11,11 +11,13 @@
 # }
 
 # Set parameters
-out_folder = '../results/mod1_lfree_pstat'
+out_folder = '../results/mod1_2_lfree_pstat'
 dir.create(out_folder)
 
 fix_lambdas = !(grepl('lfree', out_folder)) # heterogeneity allowed to vary over time 
 stationarity = !(grepl('pfree', out_folder)) # model long term effects stationary over time 
+
+remotes::install_github("yrosseel/lavaan") # for non-integer exponents 
 
 # Load dependencies
 invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE));
@@ -28,26 +30,41 @@ data <- readRDS('../mats/raw_data.rds')
 # -------------------------- Set-up and functions ------------------------------
 # ==============================================================================
 
-# All possible combinations of the 8 main parameters
-m = t(expand.grid(lapply(numeric(8), function(x) c(1, 0)))) 
-m = m[, colSums(m)>1] # remove some combinations (e.g. less than 2 parameters in the model)
-# order by number of parameters included and rename 
-mat = data.frame( m[,order(colSums(-m))], 
-                  row.names = c('maCL_dep','maCL_cmr','maAR_dep','maAR_cmr',
-                                'ltCL_dep','ltCL_cmr','ltAR_dep','ltAR_cmr'))
-# generate names for model structure (indicating the parameters which were excluded)
-nmat = mat 
-for (r in 1:nrow(mat)){ # TODO: can't make it work with apply (can't get row.name)
-  nmat[r, ] <- replace(nmat[r, ], which(nmat[r, ]==0), rownames(nmat[r, ]))
+gclpm_model_matrix <- function(var1='dep', var2='cmr', AR_always = TRUE, 
+                               save_csv=FALSE) {
+  
+  # All possible combinations of the 8 main parameters = 256 potential models 
+  m = t(expand.grid(lapply(numeric(8), function(x) c(1, 0))))
+  
+  # Remove combinations that have less than 2 parameters in the model
+  m = m[, colSums(m)>1] # = 247 potential models 
+  
+  # Order by number of parameters included and rename 
+  params = c('ltAR','ltCL','maAR','maCL')
+  param_names = c( paste(params, var1, sep='_'), paste(params, var2, sep='_'))
+  
+  mat = data.frame( m[,order(colSums(-m))], row.names = param_names)
+  
+  # Generate column names for model structure (indicating params which are excluded)
+  nmat = mat 
+  for (r in 1:nrow(mat)){ # TODO: can't make it work with apply (can't get row.name)
+    nmat[r, ] <- replace(nmat[r, ], which(nmat[r, ]==0), rownames(nmat[r, ]))
+  }
+  nms = gsub('1-','', gsub('-1', '', lapply(nmat, paste0, collapse='-'))); nms[1]='full'
+  names(mat) <- nms
+  
+  rm(m, nmat, nms, r)
+  
+  # Remove some comparisons, to speed up processing: 
+  # e.g., always estimate long term AR terms
+  if (AR_always) { mat <- mat[, -grep('ltAR', names(mat))] } # --> 64 models
+  
+  if (save_csv) { write.csv(mat, '../mats/model_structure.csv') }
+  
+  return(mat)
 }
-nms = gsub('1-','', gsub('-1', '', lapply(nmat, paste0, collapse='-'))); nms[1]='full'
-names(mat) <- nms
-rm(m, nmat, nms, r)
 
-# Remove some comparisons, to speed up processing: e.g., always estimate long term AR terms
-mat <- mat[, -grep('ltAR', names(mat))] # --> 64 models
-
-write.csv(mat, '../mats/model_structure.csv')
+mat = gclpm_model_matrix()
 
 # ------------------------------------------------------------------------------
 
@@ -59,11 +76,12 @@ sel <- function(var, times=NULL) {
 }
 
 ## Create dataset and extract metadata (used in run_model)
-make_df <- function(dep_name, dep_times, cmr_name, cmr_times, verbose=T) {
+make_df <- function(name1, times1, name2, times2, 
+                    var1='dep',var2='cmr', verbose=TRUE) {
   
-  dep = data[,sel(dep_name, dep_times)]; cmr = data[,sel(cmr_name, cmr_times)]
+  d1 = data[,sel(name1, times1)]; d2 = data[,sel(name2, times2)]
   
-  if(ncol(dep)!=ncol(cmr)) { message('Error: unequal number of timepoints') }
+  if(ncol(d1)!=ncol(d2)) { message('Error: unequal number of timepoints') }
   
   # Display characteristics of selection 
   temp_distance <- function(times) { tds <- c()
@@ -71,19 +89,24 @@ make_df <- function(dep_name, dep_times, cmr_name, cmr_times, verbose=T) {
   return(tds)
   }
   
-  df <- data.frame('id'= data$IDC)
-  for (i in 1:ncol(dep)) { df[paste0('dep',i)] <- dep[,i]; df[paste0('cmr',i)] <- cmr[,i] }
+  # df <- data.frame('id'= data$IDC)
+  # for (i in 1:ncol(d1)) { df[paste0(var1,i)] <- d1[,i]; df[paste0(var2,i)] <- d2[,i] }
+  # df = df[,-1]
   
-  df = df[,-1]
+  names(d1) <- paste0(var1,1:ncol(d1))
+  names(d2) <- paste0(var2,1:ncol(d2))
+  
+  df <- cbind(d1,d2)
   
   # select sample (at least one observation)
+  if (any(rowSums(is.na(df)) != ncol(df))) { message ('Removing empty rows.')}
   samp = df[rowSums(is.na(df)) != ncol(df), ]
   
   if (verbose) {
     # Display temporal structure
-    cat('Distance between constructs:', abs(dep_times-cmr_times), sep='\t')
-    cat('\nDepression, temporal gap:', temp_distance(dep_times), sep='\t')
-    cat('\nCMR marker, temporal gap:', temp_distance(cmr_times), sep='\t')
+    cat('Distance between constructs:', abs(times1-times2), sep='\t')
+    cat('\nDepression, temporal gap:', temp_distance(times1), sep='\t')
+    cat('\nCMR marker, temporal gap:', temp_distance(times2), sep='\t')
     
     # Display correlation
     message('\nCorrelations:')
@@ -94,15 +117,15 @@ make_df <- function(dep_name, dep_times, cmr_name, cmr_times, verbose=T) {
     message('Sample size: ', nrow(samp))
   }
   
-  output <- list("data" = samp, 
-             "dep_time" = temp_distance(dep_times), 
-             "cmr_time" = temp_distance(cmr_times) )
+  # output <- list("data" = samp, 
+  #            "dep_time" = temp_distance(times1), 
+  #            "cmr_time" = temp_distance(times2) )
   
-  return(output)
+  return(samp)
 }
 
 ## Specify the formula for the model (used in run_sem)
-clpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(), c()), 
+gclpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(), c()), 
                          mod='full', fix_lambdas=FALSE, stationarity=FALSE) {
   
   # Input check ----------------------------------------------------------------
@@ -126,13 +149,17 @@ clpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(),
   if (is.null(n_ocs)) { n_ocs = length(temp_var1) }
   
   # Define model structure according to mat matrix
+  mat = gclpm_model_matrix(var1=var1, var2=var2)
+  
   for (r in row.names(mat)) {
-    if (mat[mod][r,]==0) { assign(gsub('lt','', tolower(r)),'0') } else { assign(gsub('lt','', tolower(r)), gsub('lt','', r)) }
+    varname <- tolower(gsub(var1, 'var1', gsub(var2, 'var2', r)))
+    if (mat[mod][r,]==0) { assign(gsub('lt','', varname),'0') 
+    } else { assign(gsub('lt','', varname), gsub('lt','', r)) }
   }
   
   unit_effects = paste0('# Unit effects\n',
-                        'eta_',var1,' =~ ', paste0('l',1:(n_ocs),'*',var1,1:(n_ocs), collapse=' + '), '\n',
-                        'eta_',var2,' =~ ', paste0('l',1:(n_ocs),'*',var2,1:(n_ocs), collapse=' + '), '\n') 
+                        'eta_',var1,' =~ ', paste0('l',n_ocs:1,'*',var1,n_ocs:1, collapse=' + '), '\n',
+                        'eta_',var2,' =~ ', paste0('l',n_ocs:1,'*',var2,n_ocs:1, collapse=' + '), '\n') 
   
   impulses = '# Impulses\n'
   for (i in 2:n_ocs) { impulses = paste0(impulses, 'u_',var1,i,' =~ ',var1,i,'\n',var1,i,' ~~ 0*',var1,i,'\n') }
@@ -142,27 +169,27 @@ clpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(),
   
   for (i in n_ocs:2) { 
     # assign different name to each parameter unless it was set to 0
-    if (ar_dep!=0) { ar_depi = paste0(ar_dep,i-1) } else { ar_depi = ar_dep }
-    if (cl_dep!=0) { cl_depi = paste0(cl_dep,i-1) } else { cl_depi = cl_dep }
-    if (ar_cmr!=0) { ar_cmri = paste0(ar_cmr,i-1) } else { ar_cmri = ar_cmr }
-    if (cl_cmr!=0) { cl_cmri = paste0(cl_cmr,i-1) } else { cl_cmri = cl_cmr }
+    if (ar_var1!=0) { ar_var1i = paste0(ar_var1,i-1) } else { ar_var1i = ar_var1 }
+    if (cl_var1!=0) { cl_var1i = paste0(cl_var1,i-1) } else { cl_var1i = cl_var1 }
+    if (ar_var2!=0) { ar_var2i = paste0(ar_var2,i-1) } else { ar_var2i = ar_var2 }
+    if (cl_var2!=0) { cl_var2i = paste0(cl_var2,i-1) } else { cl_var2i = cl_var2 }
     
     if (i > 2) { # No MA terms because no impulses at first occasion
       
-      if (maar_dep!=0) { maar_depi = paste0(maar_dep,i-1) } else { maar_depi = maar_dep }
-      if (macl_dep!=0) { macl_depi = paste0(macl_dep,i-1) } else { macl_depi = macl_dep }
-      if (maar_cmr!=0) { maar_cmri = paste0(maar_cmr,i-1) } else { maar_cmri = maar_cmr }
-      if (macl_cmr!=0) { macl_cmri = paste0(macl_cmr,i-1) } else { macl_cmri = macl_cmr }
+      if (maar_var1!=0) { maar_var1i = paste0(maar_var1,i-1) } else { maar_var1i = maar_var1 }
+      if (macl_var1!=0) { macl_var1i = paste0(macl_var1,i-1) } else { macl_var1i = macl_var1 }
+      if (maar_var2!=0) { maar_var2i = paste0(maar_var2,i-1) } else { maar_var2i = maar_var2 }
+      if (macl_var2!=0) { macl_var2i = paste0(macl_var2,i-1) } else { macl_var2i = macl_var2 }
       
-      ma_terms_var1 = paste0(' + ',maar_depi,'*u_',var1,i-1,' + ',macl_depi,'*u_',var2,i-1) 
-      ma_terms_var2 = paste0(' + ',maar_cmri,'*u_',var2,i-1,' + ',macl_cmri,'*u_',var1,i-1) 
+      ma_terms_var1 = paste0(' + ',maar_var1i,'*u_',var1,i-1,' + ',macl_var1i,'*u_',var2,i-1) 
+      ma_terms_var2 = paste0(' + ',maar_var2i,'*u_',var2,i-1,' + ',macl_var2i,'*u_',var1,i-1) 
       
     } else { ma_terms_var1 = ma_terms_var2 = '' }
     
     # Add depression regressions
     regressions = paste0(regressions, 
-                         var1,i,' ~ ',ar_depi,'*',var1,i-1,' + ',cl_depi,'*',var2,i-1, ma_terms_var1,'\n',
-                         var2,i,' ~ ',ar_cmri,'*',var2,i-1,' + ',cl_cmri,'*',var1,i-1, ma_terms_var2,'\n') 
+                         var1,i,' ~ ',ar_var1i,'*',var1,i-1,' + ',cl_var1i,'*',var2,i-1, ma_terms_var1,'\n',
+                         var2,i,' ~ ',ar_var2i,'*',var2,i-1,' + ',cl_var2i,'*',var1,i-1, ma_terms_var2,'\n') 
   }
   
   comevement = '# Comovement\ndep1 ~~ comv1*cmr1\n' # first occasion no impulse
@@ -181,26 +208,26 @@ clpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(),
   
   if (fix_lambdas) {
     for (i in 1:n_ocs) { constraints = paste0(constraints, 'l',i,' == 1\n') }
-  } # else { constraints = paste0(constraints, 'l',n_ocs,' == 1\n') } # only last lambda is set to 1
+  } # only last lambda is set to 1
   
-  ar_dep_con = ar_cmr_con = cl_dep_con = cl_cmr_con = ''
+  ar_var1_con = ar_var2_con = cl_var1_con = cl_var2_con = ''
   
   if (stationarity) {
-    rel='*'
+    rel='*' # '*'
     for (i in 1:(n_ocs-1)) {
       for (o in c(1:(n_ocs-1))[-i]) {
         
-        ar_dep_con = paste0(ar_dep_con, 'AR_',var1,i,rel,temp_var1[i+1]-temp_var1[i],' == AR_',var1,o,rel,temp_var1[o+1]-temp_var1[o],'\n')
-        ar_cmr_con = paste0(ar_cmr_con, 'AR_',var2,i,rel,temp_var2[i+1]-temp_var2[i],' == AR_',var2,o,rel,temp_var2[o+1]-temp_var2[o],'\n')
+        ar_var1_con = paste0(ar_var1_con, 'AR_',var1,i,rel,temp_var1[i+1]-temp_var1[i],' == AR_',var1,o,rel,temp_var1[o+1]-temp_var1[o],'\n')
+        ar_var2_con = paste0(ar_var2_con, 'AR_',var2,i,rel,temp_var2[i+1]-temp_var2[i],' == AR_',var2,o,rel,temp_var2[o+1]-temp_var2[o],'\n')
         
-        if (cl_dep!=0) { cl_dep_con = paste0(cl_dep_con, 'CL_',var1,i,rel,temp_var1[i+1]-temp_var2[i],
-                                             ' == CL_',var1,o,rel,temp_var1[o+1]-temp_var2[o],'\n') }
-        if (cl_cmr!=0) { cl_cmr_con = paste0(cl_cmr_con, 'CL_',var2,i,rel,temp_var2[i+1]-temp_var1[i],
-                                             ' == CL_',var2,o,rel,temp_var2[o+1]-temp_var1[o],'\n') }
+        if (cl_var1!=0) { cl_var1_con = paste0(cl_var1_con, 'CL_',var1,i,rel,round(temp_var1[i+1]-temp_var2[i],1),
+                                             ' == CL_',var1,o,rel,round(temp_var1[o+1]-temp_var2[o],1),'\n') }
+        if (cl_var2!=0) { cl_var2_con = paste0(cl_var2_con, 'CL_',var2,i,rel,round(temp_var2[i+1]-temp_var1[i],1),
+                                             ' == CL_',var2,o,rel,round(temp_var2[o+1]-temp_var1[o],1),'\n') }
       }
       
     }
-    constraints = paste0(constraints, ar_dep_con, ar_cmr_con, cl_dep_con, cl_cmr_con)
+    constraints = paste0(constraints, ar_var1_con, ar_var2_con, cl_var1_con, cl_var2_con)
   }
   f = paste0(unit_effects, impulses, regressions, comevement, restrictions, constraints)
   return(f)
@@ -230,7 +257,7 @@ save_semgraph <- function(model, n_ocs, name) {
 }
 
 ## Fit a single SEM model (used in run_all_models)
-run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name, 
+run_sem <- function(mod, data, temp1, temp2, name1, name2, 
                     normalize=TRUE, plot_semgraph=FALSE) {
   cat('- ', which(names(mat)==mod), mod)
   
@@ -241,7 +268,7 @@ run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name,
   
   # Run model
   set.seed(310896)
-  m <- lavaan::sem(clpm_formula(meas_time=list(dep_temp, cmr_temp), mod=mod, 
+  m <- lavaan::sem(gclpm_formula(meas_time=list(temp1, temp2), mod=mod, 
                                 stationarity=stationarity, fix_lambdas=fix_lambdas), 
                    data, missing='fiml', se ='robust',
                    verbose=FALSE)
@@ -249,7 +276,7 @@ run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name,
   if (lavInspect(m, "converged")){
     if (plot_semgraph) {
       # Print out the layout 
-      save_semgraph(m, n_ocs=ncol(data)/2, name=paste(substr(dep_name,1,4),cmr_name,mod, sep='_'))
+      save_semgraph(m, n_ocs=ncol(data)/2, name=paste(substr(name1,1,4),name2,mod, sep='_'))
     }
   } else {
     # Return warning message ( overwrites the model object )
@@ -259,19 +286,19 @@ run_sem <- function(mod, data, dep_temp, cmr_temp, dep_name, cmr_name,
 }
 
 ## Run the 64 SEM models in parallel :)
-run_all_models <- function(dep_name, dep_times, cmr_name, cmr_times, which_models=names(mat), 
+run_all_models <- function(name1, times1, name2, times2, which_models=names(mat), 
                            verbose=FALSE){
   # Make dataframe
-  d <- make_df(dep_name, dep_times, cmr_name, cmr_times, verbose=verbose)
-  if (verbose) { print(summary(d$data)) }
+  d <- make_df(name1, times1, name2, times2, verbose=verbose)
+  if (verbose) { print(summary(d)) }
   
   # save variable names and summary for dashboard output 
-  dep_summ <- do.call(cbind, lapply(data[,sel(dep_name, dep_times)], summary))
-  cmr_summ <- do.call(cbind, lapply(data[,sel(cmr_name, cmr_times)], summary))
+  dep_summ <- do.call(cbind, lapply(data[,sel(name1, times1)], summary))
+  cmr_summ <- do.call(cbind, lapply(data[,sel(name2, times2)], summary))
   dat_summ <- cbind(dep_summ, cmr_summ) 
   dat_summ <- rbind(dat_summ, 'N_obs'= nrow(data) - dat_summ["NA's",])
   
-  cat('\n------------------------------------------------------\n',cmr_name,' ~ ',dep_name)
+  cat('\n------------------------------------------------------\n',name2,' ~ ',name1)
   cat('\n------------------------------------------------------\nFitting the models...')
   
   # stat_seq <- c(T, rep(F, 2)) # ncol(mat)-1)) # Stationary is true in the full models but false in all others
@@ -279,7 +306,7 @@ run_all_models <- function(dep_name, dep_times, cmr_name, cmr_times, which_model
   # Run this bitch (in parallel)
   start <- Sys.time(); cat(' started at: ', as.character(start), '\n') 
   fits <- mapply(run_sem, mod=which_models, # parallel::mc
-                 MoreArgs=list(data=d$data, dep_temp=dep_times, cmr_temp=cmr_times, dep_name=dep_name, cmr_name=cmr_name), 
+                 MoreArgs=list(data=d, dep_temp=times1, cmr_temp=times2, name1=name1, name2=name2), 
                  SIMPLIFY=FALSE) # mc.cores=12)
   end <- Sys.time()
   
@@ -304,7 +331,7 @@ run_all_models <- function(dep_name, dep_times, cmr_name, cmr_times, which_model
       estimates <- rbind(estimates, cbind(rep(f, nrow(es)), es))    
     } 
   }
-  save(dat_summ, fit_meas, estimates, failed, file = paste0(out_folder,'/',substr(dep_name,1,4),'_',cmr_name,'.RData'))
+  save(dat_summ, fit_meas, estimates, failed, file = paste0(out_folder,'/',substr(name1,1,4),'_',name2,'.RData'))
   
   # return(fits)
 }
@@ -387,7 +414,6 @@ models <- list(
 )
 
 # parallel::detectCores()
-
 
 # Run each depression / CMR marker combination in parallel =====================
 foreach(i=1:length(models)) %dopar% {

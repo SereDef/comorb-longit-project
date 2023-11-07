@@ -5,102 +5,74 @@ invisible(lapply(c('psychonetrics','qgraph','dplyr','tidyr','psych','gdata'), re
 data <- readRDS('../mats/raw_data.rds')
 
 # which(sapply(data, is.character)) 
+
 # Select variables from dataframe
 sel <- function(var, times=NULL){
   subs = names(data)[grep(paste(var, collapse='|'), names(data))]
   if (!is.null(times)) { subs = subs[grep(paste(paste0('_',times), collapse='|'), subs)] }
   return(subs)
 }
-# sel(c(paste0('sDEP',0:2)), 23.8)
 
 # ==============================================================================
 # ========================= CROSS-LAG NETWORK MODEL ============================
 # ==============================================================================
 
-# Select subset of timepoints
-# sub <- data[, sel(c('9.8y','10.6y','10.7y','11.8y', # T1
-#                     '17.8y','15.4y',                # T2
-#                     '23.8y','24.5y'))]              # T3
-# # Quickly check the available timepoints and counts per variable 
-# check <- function(var) {
-#   message(var, '\nCOUNT:')
-#   print(sapply(sub[,grep(var, names(sub))], function(x) sum(!is.na(x)) ))
-#   message('SUMMARY')
-#   print(summary(sub[,grep(var, names(sub))]))
-# }
-
-# Order alphabetically (i.e. per variable, per timepoint)
-# sort(gsub('_9.8', '_09.8', colnames(sub)))
-# check('waist_circ')
-# ====== -----------------------------------------------------------------------
-
-# 10.6 -> 10.7
+# Adjust odd timepoint BMI 10.7 -> 10.6 
 data$BMI_10.6y <- data$BMI_10.7y
 
+# Define waves of measurement (tot = 13 timepoints, ~1 year apart)
 var_times = c(# '9.6y',
-          '9.8y',
-          '10.6y', 
-          '11.8y',
-          '12.8y',
-          # '13.1y',
-          '13.8y',
-          '15.4y', # cmr only
-          # '16y','17y',
-          '16.6y',
-          '17.8y',
-          '18.7y', # dep only
-          '21.9y', # dep only
-          '22.9y', # dep only
-          '23.8y', # dep only
-          '24.5y') # cmr only
+              '9.8y',
+              '10.6y', 
+              '11.8y',
+              '12.8y',
+              # '13.1y',
+              '13.8y',
+              '15.4y', # note: cmr only
+              # '16y','17y',
+              '16.6y',
+              '17.8y',
+              '18.7y', # note: dep only
+              '21.9y', # note: dep only
+              '22.9y', # note: dep only
+              '23.8y', # note: dep only
+              '24.5y') # note: cmr only
 
-var_names = c(paste0('sDEP', sprintf('%02d', 1:13)),
-         # 'height', 'weight'
-         'BMI',
-         'waist_circ',
-         # 'waist_hip_ratio', # ralated to waist_circ
-         # 'total_fatmass', # index to height
-         # 'total_leanmass', 
-         'FMI',
-         # 'LMI',
-         # 'trunk_fatmass','TFI',
-         'android_fatmass',
-         # 'liver_fat', # only one observation
-         'DBP',
-         'SBP',
-         'PWV',
-         'IMT', # 2 times
-         # 'heart_rate', # unsure measure compares
-         # 'LVM', # 2 times
-         # 'RWT', # 2 times
-         # 'FS', # 2 times
-         # 'tot_chol',
-         'HDL_chol',
-         'LDL_chol',
-         'insulin',
-         'triglyc',
-         'glucose',
-         'CRP')
-         # 'IL_6', # only one timepoint
-         # 'alcohol', # 2 times
-         # 'canabis', # 2 times
-         # 'smoking') # 2 times
+# Define variables of interest (27 nodes = 13 dep + 14 cmr)
+var_names = c(paste0('sDEP', sprintf('%02d', 1:13)), # depression items
+              'BMI', # collinear: 'height', 'weight'
+              'waist_circ', # collinear: 'waist_hip_ratio'
+              'FMI', # 'total_fatmass',
+              'android_fatmass', # 'total_leanmass','LMI','trunk_fatmass','TFI',
+              # 'liver_fat', # only one observation
+              'DBP',
+              'SBP',
+              'PWV',
+              'IMT', # note: measured twice
+              # 'heart_rate', # unsure repeated measures are comparable
+              # 'LVM', 'RWT', 'FS', # note: measured twice
+              'HDL_chol',
+              'LDL_chol', # 'tot_chol'
+              'insulin',
+              'triglyc',
+              'glucose',
+              'CRP' # 'IL_6' # only one timepoint
+              # 'alcohol', 'canabis', 'smoking' # note: measured twice
+              )
 
+# Initialize design matrix (variable by times)
 m <- matrix(ncol=length(var_times), nrow=length(var_names), dimnames=list(var_names, var_times))
 
+# Fill matrix with variable names (when observed), else leave NA. 
 for (v in row.names(m)){
   obs <- sel(v)
   for (t in colnames(m)) {
     time_present <- grepl(t, obs)
-    if (any(time_present)) {
-      m[v,t] <- obs[which(time_present)]
-    }
+    if (any(time_present)) {  m[v,t] <- obs[which(time_present)] }
   }
 }
 
-des = m # [c(paste0('sDEP0', 1:3),'BMI','android_fatmass','HDL_chol'),]
-
-# ----------------- preprocessing: min-max normalization -----------------------
+# ----------------- pre-processing: min-max normalization -----------------------
 
 normalize <- function(x, ...) {
   return( (x - min(x,...)) / (max(x,...) - min(x,...)) )
@@ -123,10 +95,8 @@ normdata <- sapply(data[,-c(1,2)], normalize, na.rm = TRUE)
 # (relationships between stable means)—also termed the between-subject network.
 
 start_time <- Sys.time()
-umod <- psychonetrics::panelgvar(normdata, vars = des, # lambda=
-                                 # missing ='pairwise', 
+umod <- psychonetrics::panelgvar(normdata, vars = m, 
                                  estimator ='FIML', 
-                                 # optimizer = 'nlminb',
                                  verbose = TRUE) %>% 
   psychonetrics::runmodel() # run unpruned 
 Sys.time() - start_time
@@ -137,15 +107,15 @@ ms = c('beta',
   'omega_zeta_within', 'delta_zeta_within','sigma_epsilon_within',
   'omega_zeta_between','delta_zeta_between','sigma_epsilon_between')
 
-pdf('CIplot_2200923.pdf')
-CIplot(umod, ms) 
+pdf(paste0('CIplot_',format(Sys.Date(), '%y%m%d'),'.pdf'))
+psychonetrics::CIplot(umod, ms) 
 dev.off()
 
 # ==============================================================================
-# load('/Users/Serena/Desktop/panel_network/results/mod2/unpruned_220923.RData')
+# load('../results/mod2/unpruned_norm_info.RData')
 # ==============================================================================
 
-save_info <- function(modobj = umod, modname='unpruned_norm', thresh=0.01, adjecency=FALSE) {
+save_info <- function(modobj = umod, modname='unpruned_norm_info', thresh=0.01, adjecency=FALSE) {
   # Get fit measures
   fit <- as.data.frame(modobj@fitmeasures)
   
@@ -211,235 +181,13 @@ save_info <- function(modobj = umod, modname='unpruned_norm', thresh=0.01, adjec
     # save to csv...?
   }
   
-  save(fit, layout, t_net, c_net, b_net, 
-                  t_cent, c_cent, b_cent, 
-       file = paste0('../results/mod2/',modname,'.RData'))
+  #save(fit, layout, t_net, c_net, b_net, 
+  #                t_cent, c_cent, b_cent, 
+  #     file = paste0('../results/mod2/',modname,'.RData'))
 }
 
 save_info()
 
 # ==============================================================================
-# pruned model, get fit, parameters, and matrices
-# pmod <- umod %>% psychonetrics::prune(recursive=T) # (recursively) remove parameters that are not significant and refit the model
-# 
-# save_info(modobj = pmod, modname='pruned', thresh=0.01, adjecency=TRUE)
-# 
-# pparams <- pmod %>% psychonetrics::parameters()
-# ==============================================================================
-
-# names = c('felt\nmiserable\nor unhappy',
-#           'did not\nenjoy\nanything',
-#           'so tired\njust sat\naround',
-#           'was very\nrestless',
-#           'felt they\nwere no good\nanymore',
-#           'cried\na lot',
-#           'hard to\nthink or\nconcentrate',
-#           'hated\nthemselves',
-#           'felt they\nwere a\nbad person',
-#           'felt\nlonely',
-#           'nobody\nreally loved\nthem',
-#           'never\nas good as\nothers',
-#           'felt did\neverything\nwrong',
-#           'Body mass\nindex (BMI)',
-#           'Waist\ncircumference',
-#           'Fat mass\nindex (FMI)', # 'Lean mass\nindex (LMI)',
-#           'Android fat mass',
-#           'DBP',
-#           'SBP',
-#           'Pulse wave\nvelocity',
-#           'IMT',
-#           'HDL\ncholesterol',
-#           'LDL\ncholesterol',
-#           'Insulin',
-#           'Triglycerides',
-#           'Glucose',
-#           'C-reactive\nprotein')
-
-# pruned invariance
-# genderComp <- df %>% tidyr::drop_na(sex)
-
-# Pconfigural <-  psychonetrics::panelgvar(genderComp, vars = des, 
-#                                          estimator = 'FIML', missing = 'pairwise', 
-#                                          groups= 'sex',
-#                                          beta = prune.adjacencyT, 
-#                                          omega_zeta_within = prune.adjacencyC, 
-#                                          omega_zeta_between = prune.adjacencyB) %>% 
-#   psychonetrics::runmodel()
-# prunedconfig.fit <- Pconfigural@fitmeasures
-# 
-# Pconstrained <- Pconfigural %>% psychonetrics::groupequal('beta') %>% 
-#   psychonetrics::groupequal('omega_zeta_within') %>% 
-#   psychonetrics::groupequal("omega_zeta_between") %>% 
-#   psychonetrics::runmodel()
-# prunedconstrained.fit <- Pconstrained@fitmeasures
-# 
-# prunedcomparison <- psychonetrics::compare(Pconfigural = Pconfigural, 
-#                                            Pconstrained = Pconstrained)
-# 
-# aicDif <- Pconfigural@fitmeasures$aic.ll-Pconstrained@fitmeasures$aic.ll
-# bicDif <- Pconfigural@fitmeasures$bic-Pconstrained@fitmeasures$bic
-# prunedICs <- cbind(aicDif, bicDif)
-# 
-# #stepup model, get fit, parameters and matrices
-# stepup <- pruned %>% psychonetrics::stepup()
-# stepupfit <- stepup@fitmeasures
-# stepupparameters <- stepup %>% parameters()
-# 
-# stepuptemporal <- namedTemporal(stepup, names)
-# stepupcontemporaneous <- namedContemporaneous(stepup, names)
-# stepupbetween <- namedBetween(stepup, names)
-# stepuptemp.desc <- temporalDescript(stepuptemporal )
-# stepupcont.desc <- crossNetDescript(stepupcontemporaneous )
-# stepupbet.desc <- crossNetDescript(stepupbetween )
-# 
-# #stepup centrality
-# PDCcents<- centrality_auto(stepuptemporal )
-# PDCcentS <- PDCcents$node.centrality
-# contCents<- centrality_auto(getmatrix(stepup, "omega_zeta_within"))
-# contCentS <- contCents$node.centrality
-# betCents<- centrality_auto(getmatrix(stepup, "omega_zeta_between"))
-# betCentS <- betCents$node.centrality
-# 
-# #stepup adjacency matrices
-# stepupadjacencyT <- 1*(getmatrix(stepup, "beta")!=0)
-# stepupadjacencyB<- 1*(getmatrix(stepup, "omega_zeta_between")!=0)
-# stepupadjacencyC<- 1*(getmatrix(stepup, "omega_zeta_within")!=0)
-# 
-# # pruned invariance
-# Sconfigural<- panelgvar(genderComp, vars= des, estimator= "FIML", missing= "pairwise", groups= "Gender",
-#                         beta= stepupadjacencyT, omega_zeta_within= stepupadjacencyC, omega_zeta_between= stepupadjacencyB)%>% runmodel
-# stepupconfig.fit <- Sconfigural@fitmeasures
-# 
-# Sconstrained<- Sconfigural%>% groupequal("beta")%>% groupequal("omega_zeta_within")%>% groupequal("omega_zeta_between")%>% runmodel()
-# stepupconstrained.fit <- Sconstrained@fitmeasures
-# 
-# stepupcomparison<- psychonetrics::compare(Sconfigural= Sconfigural, Sconstrained= Sconstrained)
-# 
-# SaicDif<- Sconfigural@fitmeasures$aic.ll-Sconstrained@fitmeasures$aic.ll
-# SbicDif<- Sconfigural@fitmeasures$bic-Sconstrained@fitmeasures$bic
-# stepupICs <- cbind(SaicDif, SbicDif)
-
-
-# ==============================================================================
-# =========== Cross-sectional network analysis (single timepoint) ==============
-# ==============================================================================
-
-# library(qgraph)
-# 
-# run_net <- function(times, mean_times='',
-#                     remove = c('score','age','weight','total_fatmass','total_leanmass',
-#                                'trunk_fatmass','TMI','TFI','height'), 
-#                     verbose = TRUE) { 
-#   # Subset columns 
-#   d <- data[,sel(times)]
-#   d = d[, -which( names(d) %in% sel(remove) )] # e.g., remove total depression score and age at measurement
-#   
-#   # Select cases with at least one observation 
-#   d_obs = d[ apply(d, 1, function(x) { sum(is.na(x))<ncol(d) } ),]; n_obs <- nrow(d_obs)
-#   
-#   if (verbose) { 
-#     n_depitems <- sum(names(d) %in% sel('DEP'))
-#     message(n_depitems, ' depression items and ', ncol(d)-n_depitems, ' CMR markers.')
-#     cat(n_obs, 'observations.\n') 
-#     cat(names(d), sep='\n') }
-#   
-#   # Correlation matrix
-#   mat <- cor(d_obs, use = 'pairwise.complete.obs', method = 'spearman')
-#   
-#   message('Fitting network...')
-#   
-#   # Fit the network
-#   gra <- qgraph::qgraph(mat, 
-#                         labels=names(d_obs),
-#                         graph = 'glasso', # with EPIC model selection
-#                         sampleSize = n_obs,
-#                         # estimator ='FIML', 
-#                         layout = 'spring', # node placement
-#                         tuning = 0, # EBIC hyperparameter (gamma): [0-0.5] higher=fewer connections
-#                         lambda.min.ratio = 0.01 # minimal lambda ratio used in EBICglasso, defaults to 0.01.
-#   ) # For more control on the estimation procedure, use EBICglasso() [= qgraph(..., graph="glasso")]
-#   
-#   # Weight matrix
-#   wm <- getWmat(gra) # estimated weights matrix (can be obtained directly using EBICglasso)
-#   wm <- as.data.frame(matrix(wm, dimnames=list(t(outer(colnames(wm), rownames(wm), FUN=paste)), NULL)))
-#   
-#   # Centrality indices
-#   ci <- centralityTable(gra)[,3:5]
-#   ci <- reshape(ci, idvar = 'node', timevar = 'measure', direction = 'wide')
-#   names(ci) = gsub('value.', '', names(ci))
-#   
-#   # Fit measures 
-#   fit <- as.data.frame(ggmFit(gra, covMat=mat, sampleSize=n_obs)$fitMeasures)
-#   fit['N_obs'] <- n_obs
-#   
-#   # Layout
-#   layout <- gra$layout
-#   row.names(layout) <- gra$graphAttributes$Nodes$names
-#   
-#   # Save output
-#   if (mean_times=='') { temp = paste(gsub('y','',times), collapse='-') } else { temp = mean_times } 
-#   save(wm, ci, fit, layout, file = paste0('../results/mod3/crosnet_',temp,'y.RData'))
-#   
-#   return(gra)
-# }
-# 
-# cn9.7 <- run_net(times = c('9.6y','9.8y'))
-# cn10.65 <- run_net(times = c('10.6y','10.7y'))
-# cn11.75 <- run_net(times = c('11.7y','11.8y'))
-# 
-# cn12.8 <- run_net(times = c('12.8y'))
-# cn13.1 <- run_net(times = c('13.1y'))
-# cn13.8 <- run_net(times = c('13.8y'))
-# cn15.4 <- run_net(times = c('15.4y')) # note: CMR only 
-# 
-# cn16.6 <- run_net(times = c('16.6y','17y'))
-# cn16.7 <- run_net(times = c('16.7y','17y'))
-# 
-# cn17.8 <- run_net(times = c('17.8y')) # note: also lifestyle 
-# 
-# cn18.7 <- run_net(times = c('18.7y')) # note: depression only 
-# cn21.9 <- run_net(times = c('21.9y')) # note: depression only 
-# cn22.9 <- run_net(times = c('22.9y')) # note: depression only 
-# 
-# cn24.1 <- run_net(times = c('23.8y','24.5y'))
-
-# averageLayout(cn24.1, cn22.9)
-
-# cor_auto detects ordinal variables (with up to 7 unique integer values) and uses
-# lavaan to estimate polychoric, polyserial and Pearson correlations.
-# PROBLEM: tot_chol_9.8y, LDL_chol_9.8y
-# mat <- qgraph::cor_auto(d)
-
-# cp <- centralityPlot(gra) # centrality indices
-
-# ==============================================================================
-# library(mgm) # Estimating Time-Varying Mixed Graphical Models in High-Dimensional Data
-# 
-# d <- data[,sel(c('9.6y','9.8y'))]
-# d = d[, -which(names(d)%in%sel(c('score','age')))]
-# 
-# dc <- d[complete.cases(d), ] # doesnt take missign values 
-# 
-# vtype <- c(rep('c',13), rep('g',18))
-# vlevl <- c(rep( 3, 13), rep( 1 ,18))
-# 
-# set.seed(1)
-# fit_mgm <- mgm::mgm(data = dc,
-#                    type = vtype,
-#                    levels = vlevl,
-#                    k = 2,
-#                    lambdaSel = "CV")
-# 
-# qgraph::qgraph(fit_mgm$pairwise$wadj,
-#        edge.color = fit_mgm$pairwise$edgecolor,
-#        layout = 'spring',
-#        nodeNames = names(d),
-#        legend = TRUE)
-# fit_mgm$pairwise # = weighted adjacency matrix and the signs (if defined) of the parameters
-# fit_mgm$interactions # list of all recovered interactions (cliques) and a list of parameters associated with all cliques; 
-# fit_mgm$intercepts # all estimated thresholds/intercepts
-# fit_mgm$nodemodels # list with the p glmnet objects from which all above results are computed. 
-# We inspect the weigthed adjacency matrix stored in fit_mgm$pairwise$wadj
-
-# ==============================================================================
+# The end :) 
 # ==============================================================================
