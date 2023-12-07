@@ -17,7 +17,7 @@ layout = dbc.Row([
     dbc.Col(width={'size': 10, 'offset': 1},
             children=[
                 html.Br(),
-                html.Div(['Results of the generalized', bold_it('cross-lag panel model'), 'described as model 1 in the paper.',
+                html.Div(['Results of the generalized', bold_it('cross-lag panel model'), 'described in the paper.',
                           wrap_it(2), 'Using the selection pane below, you can decide which depression report (i.e., self or \
                           parental reports) and cardio-metabolic risk (CMR) marker you want to model. You can then inspect the \
                           variables included in the model by clicking on the inspect icon or on the graph nodes directly. Check \
@@ -31,7 +31,7 @@ layout = dbc.Row([
 
                 # Input
                 dbc.Row([
-                    dbc.Col(width={'size': 'auto'}, # lg=3, md=2, sm=1,
+                    dbc.Col(width={'size': 'auto'},  # lg=3, md=2, sm=1,
                             children=[
                                 html.Div(style={'margin-left': f'{int(styles.MARGIN_CHECKLIST[:-2])*2}px'},
                                          children=[
@@ -48,7 +48,7 @@ layout = dbc.Row([
                                                           style=styles.TEXT)
                                          ])
                             ]),
-                    dbc.Col(width={'size': 6}, # lg=7, md=8, sm=9,
+                    dbc.Col(width={'size': 6},  # lg=7, md=8, sm=9,
                             children=[
                                 html.H5(style=styles.SUB_TITLE1, children='Model structure'),
                                 dbc.Col(width={'size': 'auto'},
@@ -58,13 +58,13 @@ layout = dbc.Row([
 
                                 html.Div(id=ids.FAILED_MODEL)
                             ]),
-                    dbc.Col(width={'size': 'auto'}, # lg=3, md=2, sm=1,
+                    dbc.Col(width={'size': 'auto'},  # lg=3, md=2, sm=1,
                             children=[
                                 html.Div(style={'margin-right': f'{int(styles.MARGIN_CHECKLIST[:-2])*2}px'},
                                          children=[
-                                             html.H5(style=styles.SUB_TITLE1, children='Stationarity assumtion'),
+                                             html.H5(style=styles.SUB_TITLE1, children='Assume stationary over time:'),
                                              dbc.Row(children=[
-                                                dcc.Checklist(id='stat-checklist',
+                                                dcc.Checklist(id=ids.STAT_CHECKLIST,
                                                               options=[
                                                                 {'label': 'Between-person (latent) effect',
                                                                  'value': 'l'},
@@ -73,7 +73,7 @@ layout = dbc.Row([
                                                               value=['p'],
                                                               style=styles.TEXT,
                                                               inputStyle={'margin-left': styles.MARGIN_CHECKLIST,
-                                                                        'margin-right': styles.MARGIN_CHECKLIST},
+                                                                          'margin-right': styles.MARGIN_CHECKLIST},
                                                               labelStyle={'display': 'block'}),
                                                               ], align='start'),
                                              dbc.Row([html.Br()]),

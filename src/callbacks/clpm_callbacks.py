@@ -54,12 +54,13 @@ def update_time_plot(dep_selection, cmr_selection):
 
     Input(ids.DEP_SELECTION, 'value'),
     Input(ids.CMR_SELECTION, 'value'),
+    Input(ids.STAT_CHECKLIST,'value')
     Input(ids.UPDATE_BUTTON, 'n_clicks'),
     Input(ids.BESTFIT_BUTTON, 'n_clicks'),
     State(ids.LT_CHECKLIST, 'value'),
     State(ids.MA_CHECKLIST, 'value')
 )
-def update_graph(dep_selection, cmr_selection, click_manual, click_best, lt_checklist, ma_checklist):
+def update_graph(dep_selection, cmr_selection, stationary, click_manual, click_best, lt_checklist, ma_checklist):
     # Prevent update if the selection is not allowed (i.e., combination of markers not available)
     if dep_selection == 'mDEP' and cmr_selection not in [
                                    'FMI', 'LMI', 'BMI', 'waist_circ', 'total_fatmass', 'total_leanmass']:
@@ -76,12 +77,16 @@ def update_graph(dep_selection, cmr_selection, click_manual, click_best, lt_chec
 
         model_name = retrieve_model[0]
 
-        updated_graph = make_net1(dep_selection, cmr_selection, which_model=model_name)
+        lambdas = ['stat' if 'l' in stationary else 'free']
+        params = ['stat' if 'p' in stationary else 'free']
+
+        updated_graph = make_net1(dep_selection, cmr_selection, lambdas, params,
+                                  which_model=model_name)
 
         if updated_graph == 'fail':  # prevents any single output updating
             return no_update, no_update, 'Sorry, this model did not converge.', no_update, no_update
 
-        tab_df = make_table1(dep_selection, cmr_selection, which_model=model_name)
+        tab_df = make_table1(dep_selection, cmr_selection, lambdas, params, which_model=model_name)
         update_tab = dbc.Table.from_dataframe(df=tab_df, color='light', striped=True, bordered=True, hover=True,
                                               size='lg')
 
@@ -89,24 +94,25 @@ def update_graph(dep_selection, cmr_selection, click_manual, click_best, lt_chec
 
     elif ctx.triggered_id == ids.BESTFIT_BUTTON:
 
-        updated_graph = make_net1(dep_selection, cmr_selection, which_model='best')
+        updated_graph = make_net1(dep_selection, cmr_selection, lambdas, params, which_model='best')
 
-        tab_df = make_table1(dep_selection, cmr_selection, which_model='best')
+        tab_df = make_table1(dep_selection, cmr_selection, lambdas, params, which_model='best')
         update_tab = dbc.Table.from_dataframe(df=tab_df, color='light', striped=True, bordered=True, hover=True,
                                               size='lg')
 
         return updated_graph, update_tab, None, \
-            best_fit1(dep_selection, cmr_selection, 'lt'), best_fit1(dep_selection, cmr_selection, 'ma')
+            best_fit1(dep_selection, cmr_selection, lambdas, params, 'lt'), \
+               best_fit1(dep_selection, cmr_selection, lambdas, params, 'ma')
 
-    updated_graph = make_net1(dep_selection, cmr_selection)
+    updated_graph = make_net1(dep_selection, cmr_selection, lambdas, params)
 
     if updated_graph == 'fail':  # prevents output updating
         return no_update, no_update, 'Sorry, this model did not converge.', no_update, no_update
 
-    tab_df = make_table1(dep_selection, cmr_selection)
+    tab_df = make_table1(dep_selection, cmr_selection, lambdas, params)
     update_tab = dbc.Table.from_dataframe(df=tab_df, color='light', striped=True, bordered=True, hover=True, size='lg')
 
-    return make_net1(dep_selection, cmr_selection), update_tab, None, \
+    return make_net1(dep_selection, cmr_selection, lambdas, params), update_tab, None, \
         ['ltCL_dep', 'ltCL_cmr', 'ltAR_dep', 'ltAR_cmr'], []
 
 

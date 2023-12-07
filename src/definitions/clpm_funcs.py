@@ -14,22 +14,23 @@ from definitions.general_funcs import badge_it, get_label
 
 # -- Frontend --------------------
 def dep_var_checklist(disable_maternal=False):
+    """Defines the radio buttons used to select self vs. maternal reports of depression."""
     opts = [{'label': 'Self-reported', 'value': 'sDEP', 'disabled': False},
             {'label': 'Maternal report', 'value': 'mDEP', 'disabled': disable_maternal}]
     return opts
 
 
 def cmr_var_checklist(reporter='s'):
-    # Read all fitted model names
-    # allfiles = [x.split('.')[0] for x in os.listdir(PATH+'mod1')]
-    # moth = [s[5:]+'_' for s in allfiles if "mDEP" in s]
+    """Defines the dropdown menu used to select the CMR marker to model."""
 
+    # Manually define the order of the markers to display
     sortd = ['FMI', 'LMI', 'BMI', 'waist_circ', 'android_fatmass', 'total_fatmass', 'total_leanmass',
              'tot_chol', 'HDL_chol', 'LDL_chol', 'insulin', 'triglyc', 'CRP']
 
     opts = [{'value': v, 'label': get_label(v) + f' ({v})' if len(v) < 4 else get_label(v), 'disabled': False} for v in
             sortd]
 
+    # Disable options for which no maternal depression model was estimated
     if reporter == 'm':
         sortd_m = ['FMI', 'LMI', 'BMI', 'waist_circ', 'total_fatmass', 'total_leanmass']
         for i in opts:
@@ -40,15 +41,17 @@ def cmr_var_checklist(reporter='s'):
 
 
 def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT['font-size']):
+    """Defines the checkboxes used to determine model structure (what parameters to estimate)."""
+
     pref = '' if p == 'lt' else 'ma'
-    disable_ar = True if p == 'lt' else False
+    disable_ar = True if p == 'lt' else False  # long-term AR terms are always included
     cols = ['crimson', 'green'] if p == 'lt' else ['orange', 'lightblue']
     position = 'left' if p == 'lt' else 'right'
 
     if best:
-        val = best_fit1(depname, cmrname, list1=p)
+        val = best_fit1(depname, cmrname, list1=p)  # outputs param list of the best fitting model
     else:
-        val = ['ltCL_dep', 'ltCL_cmr', 'ltAR_dep', 'ltAR_cmr'] if p == 'lt' else []
+        val = ['ltCL_dep', 'ltCL_cmr', 'ltAR_dep', 'ltAR_cmr'] if p == 'lt' else []  # classic CLPM
 
     return html.Div(style={'width': '50%', 'height': '65%', 'float': position},
                     children=[dcc.Checklist(id=f'{p}-checklist',
@@ -88,7 +91,7 @@ def make_button(label, id_name, color, margin='15px', fs=styles.TEXT['font-size'
 model_structure = pd.read_csv('./assets/model_structure.csv').set_index('Unnamed: 0')
 
 
-def read_res1(depname, cmrname, lambdas='free', param='stat', path='./assets/results/mod1/'):
+def read_res1(depname, cmrname, lambdas='free', params='stat', path='./assets/results/mod1/'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker, + stationarity assumptions for lambdas and long term parameters ('free' vs. 'stat').
        Open the .RData file created by Rscript 1.GCLPM (one for dep-cmr marker pair).
@@ -101,7 +104,7 @@ def read_res1(depname, cmrname, lambdas='free', param='stat', path='./assets/res
        - failed: list of models that did not converge, with corresponding error or warning message.
        Use: summ, fitm, esti, fail = read_res1('sDEP','FMI') -OR- summ = read_res1('sDEP','BMI')[0]
     """
-    res = pyreadr.read_r(f'{path}g_l{lambdas}_p{param}/{depname}_{cmrname}.RData')
+    res = pyreadr.read_r(f'{path}g_l{lambdas}_p{params}/{depname}_{cmrname}.RData')
 
     summ = res['dat_summ']
     fitm = res['fit_meas'].T
@@ -113,14 +116,14 @@ def read_res1(depname, cmrname, lambdas='free', param='stat', path='./assets/res
     return summ, fitm, esti, fail
 
 
-def best_fit1(depname, cmrname, list1=None):
+def best_fit1(depname, cmrname, lambdas, params, list1=None):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker.
        By default, returns a dataframe with the model name (indicating the excluded parameters) and structure (0,1...).
        When list1 is provided, returns the list of long-term (list1='lt') or short-term (list1='ma') parameters
        estimated in the model.
     """
-    fitm = read_res1(depname, cmrname)[1]
+    fitm = read_res1(depname, cmrname, lambdas, params)[1]
 
     # Best fitting model (lowest BIC)
     mod = fitm.index[fitm.bic == fitm.bic.min()][0]
@@ -182,7 +185,7 @@ def make_plot1(depname, cmrname):
     fig.update_xaxes(title_text='Years', mirror=True, ticks='outside', showline=True, linecolor='black',
                      gridcolor='lightgrey')
 
-    # Group "cross-sectional" timepoints using grey background
+    # Group "cross-sectional" time points using grey background
     crosspoints = []
     for i in range(len(t_dep)):
         xmin = min(t_dep[i], t_cmr[i]) - .2
@@ -201,7 +204,7 @@ def make_plot1(depname, cmrname):
     return fig
 
 
-def make_net1(depname, cmrname, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
+def make_net1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
               net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
@@ -209,13 +212,13 @@ def make_net1(depname, cmrname, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr
        This only creates the core structure, style parameters are defined in style_sheet1.
     """
     # read data
-    summ, _, esti, fail = read_res1(depname, cmrname)
+    summ, _, esti, fail = read_res1(depname, cmrname, lambdas, params)
 
     # Best fitting model
     if which_model == 'best':
-        modstr = best_fit1(depname, cmrname).T
+        modstr = best_fit1(depname, cmrname, lambdas, params).T
     elif which_model in fail:
-        return 'fail'  # modstr = best_fit(depname, cmrname).T
+        return 'fail'
     else:
         modstr = pd.DataFrame(model_structure[which_model]).T
 
@@ -400,12 +403,12 @@ for c in d.keys():
                        ])
 
 
-def make_table1(depname, cmrname, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
+def make_table1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure.
        Extracts the fit measures for the specified model and stores into a table to be displayed next to the graph.
     """
-    fitm = read_res1(depname, cmrname)[1]
+    fitm = read_res1(depname, cmrname, lambdas, params)[1]
 
     if which_model == 'best':
         which_model = fitm.index[fitm.bic == fitm.bic.min()][0]  # Best fitting model (lowest BIC)
