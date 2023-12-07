@@ -303,7 +303,7 @@ run_all_models <- function(name1, times1, name2, times2, which_models=names(mat)
   # Run this bitch (in parallel)
   start <- Sys.time(); cat(' started at: ', as.character(start), '\n') 
   fits <- mapply(run_sem, mod=which_models, # parallel::mc
-                 MoreArgs=list(data=d, dep_temp=times1, cmr_temp=times2, name1=name1, name2=name2), 
+                 MoreArgs=list(data=d, temp1=times1, temp2=times2, name1=name1, name2=name2), 
                  SIMPLIFY=FALSE) # mc.cores=12)
   end <- Sys.time()
   

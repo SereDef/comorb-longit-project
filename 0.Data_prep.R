@@ -134,6 +134,29 @@ extr_cmr <- function(df, age){
   return(cmr)
 }
 
+# Extract and combine puberty variables
+extr_pub <- function(age, scale=12){
+  
+  pubid = substr(age,1,4)
+  
+  # identify variables 
+  pub <- data.frame('phys_activity'= full[, paste0(pubid,'09')],
+                    # 'age1st_menar'= full[, paste0(pubid,'11')],
+                    # Breasts and pubic hair
+                    'puberty_stage_f'= rowSums(full[, paste0(pubid,c('30','35'))], na.rm = FALSE),
+                    # Testes, scrotum penis and pubic hair
+                    'puberty_stage_m'= rowSums(full[, paste0(pubid,c('50','55'))], na.rm = FALSE),
+                    
+                    'pub_age' = full[, age]/scale
+                    )
+  
+  # Add age mark to variable 
+  names(pub) <- paste0(names(pub),'_',round(median(pub$pub_age,na.rm=TRUE),1),'y')
+  
+  print(summary(pub))
+  return(pub)
+}
+
 # ---- SMFQ mother-reported (13 items) / self-reported (17-16) -----------------
 
 # 1	    Felt miserable or unhappy in the past 2 weeks
@@ -197,6 +220,8 @@ cmr_09.8y[,'insulin_9.8y'] <- rm_outliers(cmr_09.8y[,'insulin_9.8y'], cutoff = 1
 summary(cmr_09.8y)
 
 # EXTRA ------------------------------------------------------------------------
+pub_8.2y <- extr_cmr(data.frame('pub109'='phys_act'), 
+                     age='pub194')
 # * Puberty
 #   pub209 = frequency of participation in vigorous physical activity during past month
 #   pub211 = how old was child when she had her first period (but few cases!)
@@ -604,8 +629,44 @@ cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
 # other symptoms 
 
 # ==============================================================================
-#cat(ls(), sep=", ")
 
+# Puberty stage and physical exercise
+pub_08.2y <- extr_pub(age='pub194', scale=52) # transform age in weeks to years 
+pub_09.6y <- extr_pub(age='pub295')
+pub_10.7y <- extr_pub(age='pub397a')
+pub_11.7y <- extr_pub(age='pub497a')
+pub_13.1y <- extr_pub(age='pub597a')
+pub_14.7y <- extr_pub(age='pub697a')
+pub_15.3y <- extr_pub(age='pub797a')
+pub_16.0y <- extr_pub(age='pub897a')
+pub_17.0y <- extr_pub(age='pub997a')
+
+# ==============================================================================
+# Parental education (measured at 5.1 years)
+# NOTE: other education levels present but don't know what to do with them ...
+
+m_edu = ifelse( !is.na(full$k6280), 0, # 'no educational qualification'
+        ifelse( !is.na(full$k6292), 2, # 'University degree'
+        ifelse( !is.na(full$k6281)     # 'CSE/GCSE (D,E,F,G)'
+              | !is.na(full$k6282)     # 'O-level/GCSE (A,B,C)'
+              | !is.na(full$k6283)     # 'A-levels'
+              | !is.na(full$k6284), 1, # 'vocational qualification'
+        NA))) 
+
+p_edu = ifelse( !is.na(full$k6300), 0, # 'no educational qualification'
+        ifelse( !is.na(full$k6312), 2, # 'University degree'
+        ifelse( !is.na(full$k6301)     # 'CSE/GCSE (D,E,F,G)'
+              | !is.na(full$k6302)     # 'O-level/GCSE (A,B,C)'
+              | !is.na(full$k6303)     # 'A-levels'
+              | !is.na(full$k6304), 1, # 'vocational qualification'
+              NA))) 
+
+parent_edu <- data.frame('m_edu' = m_edu, 
+                         'p_edu' = p_edu)
+
+# ==============================================================================
+
+#cat(ls(), sep=", ")
 data <- cbind(data, 
      mdep_09.6y, cmr_09.6y, cmr_09.8y, 
       dep_10.6y, cmr_10.6y, cmr_10.7y, 
@@ -620,7 +681,10 @@ data <- cbind(data,
       dep_21.9y, 
       dep_22.9y, 
       dep_23.8y, 
-      cmr_24.5y)
+      cmr_24.5y, 
+      pub_08.2y, pub_09.6y, pub_10.7y, pub_11.7y, pub_13.1y, pub_14.7y, 
+      pub_15.3y, pub_16.0y, pub_17.0y, 
+     parent_edu)
 
 
 # Select groups of variables  
