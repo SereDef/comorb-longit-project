@@ -25,39 +25,67 @@ layout = dbc.Row([
                           underline_it('Note'), ': by default, the "classic" cross-lag panel model is presented, but the parameter \
                           conbination can be constumized using the tickboxes on the right (don\'t forget to hit the ',
                           badge_it('Update model', 'grey'), ' button to see the changes). Hit the ', badge_it('Best fit', 'silver'),
-                          ' button to display the best fitting model (i.e. lowest AIC).'],
+                          ' button to display the best fitting model (i.e. lowest BIC).'],
                          style=styles.TEXT),
                 html.Hr(),
 
                 # Input
                 dbc.Row([
-                    dbc.Col(width={'size': 4, 'offset': 1}, lg=3, md=2, sm=1,
+                    dbc.Col(width={'size': 'auto'}, # lg=3, md=2, sm=1,
                             children=[
-                                html.H5(style=styles.SUB_TITLE1, children='Depression score'),
-                                dcc.RadioItems(id=ids.DEP_SELECTION,
-                                               options=dep_var_checklist(), value='sDEP',
-                                               inputStyle={'margin-left': '20px', 'margin-right': '20px'},
-                                               style=styles.TEXT),
-                                html.Br(),
-                                html.H5(style=styles.SUB_TITLE1, children='Cardio-metabolic marker'),
-                                dcc.Dropdown(id=ids.CMR_SELECTION,
-                                             options=cmr_var_checklist(), value='FMI',
-                                             style=styles.TEXT)
-                            ]),
-                    dbc.Col(width={'size': 6}, lg=7, md=8, sm=9,
-                            children=[
-                                html.H5(style=styles.SUB_TITLE1, children='Model estimation'),
-                                param_checklist('sDEP', 'FMI', p='lt'),
-                                param_checklist('sDEP', 'FMI', p='ma'),
-                                html.Div(style={'width': '40%', 'height': '35%', 'float': 'right'},
+                                html.Div(style={'margin-left': f'{int(styles.MARGIN_CHECKLIST[:-2])*2}px'},
                                          children=[
-                                             make_button('Best fit', ids.BESTFIT_BUTTON, 'silver'),
-                                             make_button('Update model', ids.UPDATE_BUTTON, 'grey')
-                                         ]),
-                                html.Div(style={'width': '60%', 'height': '25%', 'float': 'left', 'color': 'red'},
-                                         id=ids.FAILED_MODEL)
+                                             html.H5(style=styles.SUB_TITLE1, children='Depression score'),
+                                             dcc.RadioItems(id=ids.DEP_SELECTION,
+                                                            options=dep_var_checklist(), value='sDEP',
+                                                            inputStyle={'margin-left': styles.MARGIN_CHECKLIST,
+                                                                        'margin-right': styles.MARGIN_CHECKLIST},
+                                                            style=styles.TEXT),
+                                             html.Br(),
+                                             html.H5(style=styles.SUB_TITLE1, children='Cardio-metabolic marker'),
+                                             dcc.Dropdown(id=ids.CMR_SELECTION,
+                                                          options=cmr_var_checklist(), value='FMI',
+                                                          style=styles.TEXT)
+                                         ])
+                            ]),
+                    dbc.Col(width={'size': 6}, # lg=7, md=8, sm=9,
+                            children=[
+                                html.H5(style=styles.SUB_TITLE1, children='Model structure'),
+                                dbc.Col(width={'size': 'auto'},
+                                        children=[param_checklist('sDEP', 'FMI', p='lt')]),
+                                dbc.Col(width={'size': 'auto'},
+                                        children=[param_checklist('sDEP', 'FMI', p='ma')]),
+
+                                html.Div(id=ids.FAILED_MODEL)
+                            ]),
+                    dbc.Col(width={'size': 'auto'}, # lg=3, md=2, sm=1,
+                            children=[
+                                html.Div(style={'margin-right': f'{int(styles.MARGIN_CHECKLIST[:-2])*2}px'},
+                                         children=[
+                                             html.H5(style=styles.SUB_TITLE1, children='Stationarity assumtion'),
+                                             dbc.Row(children=[
+                                                dcc.Checklist(id='stat-checklist',
+                                                              options=[
+                                                                {'label': 'Between-person (latent) effect',
+                                                                 'value': 'l'},
+                                                                {'label': 'Within-person parameters',
+                                                                 'value': 'p'}],
+                                                              value=['p'],
+                                                              style=styles.TEXT,
+                                                              inputStyle={'margin-left': styles.MARGIN_CHECKLIST,
+                                                                        'margin-right': styles.MARGIN_CHECKLIST},
+                                                              labelStyle={'display': 'block'}),
+                                                              ], align='start'),
+                                             dbc.Row([html.Br()]),
+                                             dbc.Row(children=[
+                                                         dbc.Col(width={'size': 'auto'},
+                                                                 children=[make_button('Best fit', ids.BESTFIT_BUTTON, 'silver')]),
+                                                         dbc.Col(width={'size': 'auto'},
+                                                                 children=[make_button('Update model', ids.UPDATE_BUTTON, 'grey')])
+                                                     ], class_name='g-1', justify='end', align='end')
+                                         ])
                             ])
-                ], justify='between'), html.Hr(),
+                    ], class_name='g-0', justify='between'), html.Hr(),
 
                 # Time plot
                 html.Div([dbc.Accordion(start_collapsed=True,

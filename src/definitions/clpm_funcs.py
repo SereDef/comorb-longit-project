@@ -41,6 +41,7 @@ def cmr_var_checklist(reporter='s'):
 
 def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT['font-size']):
     pref = '' if p == 'lt' else 'ma'
+    disable_ar = True if p == 'lt' else False
     cols = ['crimson', 'green'] if p == 'lt' else ['orange', 'lightblue']
     position = 'left' if p == 'lt' else 'right'
 
@@ -49,17 +50,17 @@ def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT[
     else:
         val = ['ltCL_dep', 'ltCL_cmr', 'ltAR_dep', 'ltAR_cmr'] if p == 'lt' else []
 
-    return html.Div(style={'width': '50%', 'height': '65%', 'float': position, 'font-size': '18px'},
+    return html.Div(style={'width': '50%', 'height': '65%', 'float': position},
                     children=[dcc.Checklist(id=f'{p}-checklist',
                                             options=[
                                                 {'label': html.Span([
                                                     badge_it(f'{pref}AR', cols[0], badgefont),
                                                     ' depression']),
-                                                 'value': f'{p}AR_dep'},
+                                                 'value': f'{p}AR_dep', 'disabled':disable_ar},
                                                 {'label': html.Span(
                                                     [badge_it(f'{pref}AR', cols[0], badgefont),
                                                      ' cardio-metabolic risk']),
-                                                 'value': f'{p}AR_cmr'},
+                                                 'value': f'{p}AR_cmr', 'disabled':disable_ar},
                                                 {'label': html.Span(
                                                     [badge_it(f'{pref}CL', cols[1], badgefont),
                                                      ' depression \u290F cardio-metab.']),
@@ -70,7 +71,8 @@ def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT[
                                                  'value': f'{p}CL_cmr'}],
                                             value=val,
                                             style=styles.TEXT,
-                                            inputStyle={'margin-left': '20px', 'margin-right': '20px'},
+                                            inputStyle={'margin-left': styles.MARGIN_CHECKLIST,
+                                                        'margin-right': styles.MARGIN_CHECKLIST},
                                             labelStyle={'display': 'block'})])
 
 
@@ -99,7 +101,7 @@ def read_res1(depname, cmrname, lambdas='free', param='stat', path='./assets/res
        - failed: list of models that did not converge, with corresponding error or warning message.
        Use: summ, fitm, esti, fail = read_res1('sDEP','FMI') -OR- summ = read_res1('sDEP','BMI')[0]
     """
-    res = pyreadr.read_r(f'{path}l{lambdas}_p{param}/{depname}_{cmrname}.RData')
+    res = pyreadr.read_r(f'{path}g_l{lambdas}_p{param}/{depname}_{cmrname}.RData')
 
     summ = res['dat_summ']
     fitm = res['fit_meas'].T
@@ -120,7 +122,7 @@ def best_fit1(depname, cmrname, list1=None):
     """
     fitm = read_res1(depname, cmrname)[1]
 
-    # Best fitting model (lowest AIC)
+    # Best fitting model (lowest BIC)
     mod = fitm.index[fitm.bic == fitm.bic.min()][0]
     if list1:  # Return list of parameters estimated in the model
         return list(model_structure.index[(model_structure[mod] > 0) & (model_structure.index.str.contains(list1))])
@@ -199,7 +201,7 @@ def make_plot1(depname, cmrname):
     return fig
 
 
-def make_net1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr',
+def make_net1(depname, cmrname, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
               net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
@@ -398,7 +400,7 @@ for c in d.keys():
                        ])
 
 
-def make_table1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_cmr'):
+def make_table1(depname, cmrname, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure.
        Extracts the fit measures for the specified model and stores into a table to be displayed next to the graph.
@@ -406,7 +408,7 @@ def make_table1(depname, cmrname, which_model='maCL_dep-maCL_cmr-maAR_dep-maAR_c
     fitm = read_res1(depname, cmrname)[1]
 
     if which_model == 'best':
-        which_model = fitm.index[fitm.aic == fitm.aic.min()][0]  # Best fitting model (lowest AIC)
+        which_model = fitm.index[fitm.bic == fitm.bic.min()][0]  # Best fitting model (lowest BIC)
 
     dt = pd.DataFrame(
         fitm.loc[which_model, ['npar', 'df', 'chisq', 'pvalue', 'cfi', 'tli', 'rmsea', 'srmr', 'aic', 'bic', ]])

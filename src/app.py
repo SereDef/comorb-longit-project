@@ -17,9 +17,10 @@ server = app.server
 
 navbar_content = [
     dbc.NavItem(dbc.NavLink('Data overview', href='/', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-lag panel model', href='/clpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-lag panel model (1)', href='/clpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-lag panel model (2)', href='/riclpm', active=False)),
     dbc.NavItem(dbc.NavLink('Cross-lag network model', href='/clnm', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-sectional network model', href='/csnm', active='exact'))
+    dbc.NavItem(dbc.NavLink('Cross-sectional network models', href='/csnm', active='exact'))
 ]
 
 app.layout = html.Div([

@@ -3,6 +3,7 @@ TITLE = {'font-size': '32px', 'text-align': 'center', 'font-weight': 'bold'}
 NAVBAR = {'font-size': '16px'}
 
 TEXT = {'font-size': '14px'}
+MARGIN_CHECKLIST = '20px'
 SUB_TITLE1 = {'font-size': '16px', 'text-align': 'left'}
 SUB_TITLE2 = {'font-size': '16px', 'text-align': 'center'}
 
