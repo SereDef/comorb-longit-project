@@ -7,17 +7,17 @@ import definitions.layout_styles as styles
 
 from definitions.general_funcs import bold_it, badge_it, underline_it, wrap_it
 
-from definitions.clpm_funcs import \
+from definitions.gclpm_funcs import \
     dep_var_checklist, cmr_var_checklist, param_checklist, make_button, make_plot1, make_net1, style_net1, make_table1
 
 
-register_page(__name__, path='/clpm')
+register_page(__name__, path='/gclpm')
 
 layout = dbc.Row([
     dbc.Col(width={'size': 10, 'offset': 1},
             children=[
                 html.Br(),
-                html.Div(['Results of the generalized', bold_it('cross-lag panel model'), 'described in the paper.',
+                html.Div(['Results of the', bold_it('Generalized Cross-Lag Panel Model'), '(gCLPM) described in the paper.',
                           wrap_it(2), 'Using the selection pane below, you can decide which depression report (i.e., self or \
                           parental reports) and cardio-metabolic risk (CMR) marker you want to model. You can then inspect the \
                           variables included in the model by clicking on the inspect icon or on the graph nodes directly. Check \
@@ -45,6 +45,7 @@ layout = dbc.Row([
                                              html.H5(style=styles.SUB_TITLE1, children='Cardio-metabolic marker'),
                                              dcc.Dropdown(id=ids.CMR_SELECTION,
                                                           options=cmr_var_checklist(), value='FMI',
+                                                          clearable=False,
                                                           style=styles.TEXT)
                                          ])
                             ]),
@@ -116,13 +117,13 @@ layout = dbc.Row([
                                       html.Div(id=ids.FITM_TABLE,
                                                children=[dbc.Table.from_dataframe(
                                                    df=make_table1('sDEP', 'FMI'),
-                                                   style={'font-size': '12px'},
+                                                   style={'font-size': styles.CLPM_TABLE_TEXT},
                                                    color='light', striped=True, bordered=True, hover=True, size='lg')])
                                       ])
                 ], justify='between'),
 
                 # Pop variable descriptives
-                dbc.Offcanvas(style={'width': 700},
+                dbc.Offcanvas(style={'width': styles.OFFCANVAS_WIDTH},
                               id=ids.POP1,
                               children=[dcc.Graph()],
                               title='',

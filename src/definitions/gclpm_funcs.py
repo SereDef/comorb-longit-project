@@ -204,7 +204,7 @@ def make_plot1(depname, cmrname):
     return fig
 
 
-def make_net1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
+def make_net1(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
               net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
@@ -226,14 +226,17 @@ def make_net1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-
     def extr_est(name=None, which=None, lamb=False, eta_corr=False, imp_corr=False, model_output=esti):
         df = model_output.loc[modstr.index[0]]
         if lamb:
-            e, s = df.loc[(df.lhs == f'eta_{name}') & (df.op == '=~'), ['est', 'sign']].round(2).iloc[which]
+            e, l, u, s = df.loc[(df.lhs == f'eta_{name}') & (df.op == '=~'), ['est', 'ci.lower', 'ci.upper', 'sign'
+                                                                              ]].round(2).iloc[which]
         elif eta_corr:
-            e, s = df.loc[(df.lhs == 'eta_dep') & (df.rhs == 'eta_cmr'), ['est', 'sign']].round(2).iloc[0]
+            e, l, u, s = df.loc[(df.lhs == 'eta_dep') & (df.rhs == 'eta_cmr'), ['est', 'ci.lower', 'ci.upper', 'sign'
+                                                                                ]].round(2).iloc[0]
         elif imp_corr:
-            e, s = df.loc[df.label.str.contains('comv'), ['est', 'sign']].round(2).iloc[which]
+            e, l, u, s = df.loc[df.label.str.contains('comv'), ['est', 'ci.lower', 'ci.upper', 'sign']].round(2).iloc[which]
         else:
-            e, s = df.loc[df.label.str.contains(name)].iloc[::-1][['est', 'sign']].round(2).iloc[which]
-        return e, s
+            e, l, u, s = df.loc[df.label.str.contains(name)].iloc[::-1][['est', 'ci.lower', 'ci.upper', 'sign'
+                                                                         ]].round(2).iloc[which]
+        return e, l, u, s
 
     # Ready to draw
     nt = summ.shape[1] // 2  # Number of time points
@@ -303,32 +306,43 @@ def make_net1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-
 
             if i < nt:
                 otherv = abs(eta - 1)
+                # time adjustment
+                t1 = timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}']
+                t2 = timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}']
                 # AR and CL terms
                 if modstr[f'ltAR_{v}'].iloc[0]:
-                    elm.append({'data': {'source': f'{v}{i}', 'target': f'{v}{i + 1}',
-                                         'weight': '%.2f' % (extr_est(f'^AR_{v}', i - 1)[0] * (
-                                                 timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}'])),
-                                         'sign': extr_est(f'^AR_{v}', i - 1)[1],
+                    elm.append({'data': {'source': f'{v}{i}',
+                                         'target': f'{v}{i + 1}',
+                                         'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'^AR_{v}', i - 1)[0] * t1,
+                                                                           extr_est(f'^AR_{v}', i - 1)[1] * t1,
+                                                                           extr_est(f'^AR_{v}', i - 1)[2] * t1),
+                                         'sign': extr_est(f'^AR_{v}', i - 1)[3],
                                          'label': f'AR{i}', 'firstname': 'direct'}})
                 if modstr[f'ltCL_{v}'].iloc[0]:
-                    elm.append({'data': {'source': f'{vs[otherv]}{i}', 'target': f'{v}{i + 1}',
-                                         'weight': '%.2f' % (extr_est(f'^CL_{v}', i - 1)[0] * (
-                                                 timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}'])),
-                                         'sign': extr_est(f'^CL_{v}', i - 1)[1],
+                    elm.append({'data': {'source': f'{vs[otherv]}{i}',
+                                         'target': f'{v}{i + 1}',
+                                         'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'^CL_{v}', i - 1)[0] * t2,
+                                                                           extr_est(f'^CL_{v}', i - 1)[1] * t2,
+                                                                           extr_est(f'^CL_{v}', i - 1)[2] * t2),
+                                         'sign': extr_est(f'^CL_{v}', i - 1)[3],
                                          'label': f'CL{i}', 'firstname': 'direct'}})
                 # ma AR and maCL terms
                 if i > 1:
                     if modstr[f'maAR_{v}'].iloc[0]:
-                        elm.append({'data': {'source': f'imp_{v}{i}', 'target': f'{v}{i + 1}',
-                                             'weight': '%.2f' % (extr_est(f'^maAR_{v}', i - 2)[0] / (
-                                                     timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}'])),
-                                             'sign': extr_est(f'^maAR_{v}', i - 2)[1],
+                        elm.append({'data': {'source': f'imp_{v}{i}',
+                                             'target': f'{v}{i + 1}',
+                                             'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'^maAR_{v}', i - 2)[0] * t1,
+                                                                               extr_est(f'^maAR_{v}', i - 2)[1] * t1,
+                                                                               extr_est(f'^maAR_{v}', i - 2)[2] * t1),
+                                             'sign': extr_est(f'^maAR_{v}', i - 2)[3],
                                              'label': f'maAR{i}', 'firstname': 'direct'}})
                     if modstr[f'maCL_{v}'].iloc[0]:
-                        elm.append({'data': {'source': f'imp_{vs[otherv]}{i}', 'target': f'{v}{i + 1}',
-                                             'weight': '%.2f' % (extr_est(f'^maCL_{v}', i - 2)[0] / (
-                                                     timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}'])),
-                                             'sign': extr_est(f'^maCL_{v}', i - 2)[1],
+                        elm.append({'data': {'source': f'imp_{vs[otherv]}{i}',
+                                             'target': f'{v}{i + 1}',
+                                             'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'^maCL_{v}', i - 2)[0] * t2,
+                                                                               extr_est(f'^maCL_{v}', i - 2)[1] * t2,
+                                                                               extr_est(f'^maCL_{v}', i - 2)[2] * t2),
+                                             'sign': extr_est(f'^maCL_{v}', i - 2)[3],
                                              'label': f'maCL{i}', 'firstname': 'direct'}})
     return elm
 
@@ -385,25 +399,37 @@ style_net1 = [
     # {'selector':'edge[sign < 1]', 'style':{'line-style':'dashed'}},
 ]
 # Set the color of each edge type and the distance between source and label displaying its weight (to avoid overlapping)
-d = {'AR': ['red', 40], 'maAR': ['orange', 70], 'CL': ['green', 220], 'maCL': ['lightblue', 40]}
+d = {'AR': ['red', styles.CLPM_WIDTH/25],
+     'CL': ['green', styles.CLPM_WIDTH/3.8],
+     'maAR': ['orange', styles.CLPM_WIDTH/12],
+     'maCL': ['lightblue', styles.CLPM_WIDTH/20]}
 
 for c in d.keys():
     style_net1.extend([{'selector': f'[label *= "{c}"][sign > 0]',
-                       'style': {'line-color': d[c][0], 'target-arrow-color': d[c][0],
-                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1],
-                                 'font-size': styles.CLPM_EDGE_LABEL*1.25,
-                                 'font-weight': 'bold',
-                                 'text-background-color': d[c][0], 'text-background-opacity': .5}},
-                      {'selector': f'[label *= "{c}"][sign < 1]',
-                       'style': {'line-style': 'dashed', 'width': 1.5,
-                                 'line-color': d[c][0], 'target-arrow-color': d[c][0],
-                                 'source-label': 'data(weight)', 'source-text-offset': d[c][1],
-                                 'font-size': styles.CLPM_EDGE_LABEL,
-                                 'text-background-color': d[c][0], 'text-background-opacity': .5}}
+                        'style': {'line-color': d[c][0],
+                                  'target-arrow-color': d[c][0],
+                                  'source-label': 'data(weight)',
+                                  'source-text-offset': d[c][1],
+                                  'font-size': styles.CLPM_EDGE_LABEL*1.25,
+                                  'text-wrap': 'wrap',
+                                  'font-weight': 'bold',
+                                  'text-background-color': d[c][0],
+                                  'text-background-opacity': .5}},
+                       {'selector': f'[label *= "{c}"][sign < 1]',
+                        'style': {'line-style': 'dashed',
+                                  'width': 1.5,
+                                  'line-color': d[c][0],
+                                  'target-arrow-color': d[c][0],
+                                  'source-label': 'data(weight)',
+                                  'text-wrap': 'wrap',
+                                  'source-text-offset': d[c][1],
+                                  'font-size': styles.CLPM_EDGE_LABEL,
+                                  'text-background-color': d[c][0],
+                                  'text-background-opacity': .5}}
                        ])
 
 
-def make_table1(depname, cmrname, lambdas, params, which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
+def make_table1(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure.
        Extracts the fit measures for the specified model and stores into a table to be displayed next to the graph.

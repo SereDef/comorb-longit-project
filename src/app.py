@@ -3,7 +3,7 @@ import dash_bootstrap_components as dbc
 
 import definitions.layout_styles as styles
 
-from callbacks import clpm_callbacks, clnm_callbacks, csnm_callbacks
+from callbacks import gclpm_callbacks, riclpm_callbacks, clnm_callbacks, csnm_callbacks
 
 FONT_AWESOME = "https://use.fontawesome.com/releases/v5.13.0/css/all.css"
 external_stylesheets = [dbc.themes.BOOTSTRAP, FONT_AWESOME]
@@ -17,8 +17,8 @@ server = app.server
 
 navbar_content = [
     dbc.NavItem(dbc.NavLink('Data overview', href='/', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-lag panel model (1)', href='/clpm', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-lag panel model (2)', href='/riclpm', active=False)),
+    dbc.NavItem(dbc.NavLink('Cross-lag panel model (1)', href='/gclpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Cross-lag panel model (2)', href='/riclpm', active='exact')),
     dbc.NavItem(dbc.NavLink('Cross-lag network model', href='/clnm', active='exact')),
     dbc.NavItem(dbc.NavLink('Cross-sectional network models', href='/csnm', active='exact'))
 ]

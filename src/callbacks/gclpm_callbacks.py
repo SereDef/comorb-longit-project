@@ -6,7 +6,7 @@ import pandas as pd
 import definitions.elements_ids as ids
 from definitions.general_funcs import desc_plot
 
-from definitions.clpm_funcs import \
+from definitions.gclpm_funcs import \
     dep_var_checklist, cmr_var_checklist, param_checklist, \
     model_structure, best_fit1, make_plot1, make_net1, style_net1, make_table1
 
@@ -54,7 +54,7 @@ def update_time_plot(dep_selection, cmr_selection):
 
     Input(ids.DEP_SELECTION, 'value'),
     Input(ids.CMR_SELECTION, 'value'),
-    Input(ids.STAT_CHECKLIST,'value')
+    Input(ids.STAT_CHECKLIST,'value'),
     Input(ids.UPDATE_BUTTON, 'n_clicks'),
     Input(ids.BESTFIT_BUTTON, 'n_clicks'),
     State(ids.LT_CHECKLIST, 'value'),
@@ -62,6 +62,9 @@ def update_time_plot(dep_selection, cmr_selection):
 )
 def update_graph(dep_selection, cmr_selection, stationary, click_manual, click_best, lt_checklist, ma_checklist):
     # Prevent update if the selection is not allowed (i.e., combination of markers not available)
+    lambdas = 'stat' if 'l' in stationary else 'free'
+    params = 'stat' if 'p' in stationary else 'free'
+
     if dep_selection == 'mDEP' and cmr_selection not in [
                                    'FMI', 'LMI', 'BMI', 'waist_circ', 'total_fatmass', 'total_leanmass']:
         return no_update, no_update, no_update, no_update, no_update
@@ -76,9 +79,6 @@ def update_graph(dep_selection, cmr_selection, stationary, click_manual, click_b
             return no_update, no_update, 'Sorry, I did not estimate this model.', no_update, no_update
 
         model_name = retrieve_model[0]
-
-        lambdas = ['stat' if 'l' in stationary else 'free']
-        params = ['stat' if 'p' in stationary else 'free']
 
         updated_graph = make_net1(dep_selection, cmr_selection, lambdas, params,
                                   which_model=model_name)
@@ -122,7 +122,7 @@ def update_graph(dep_selection, cmr_selection, stationary, click_manual, click_b
     Output(ids.POP1, 'title'),
     Output(ids.POP1, 'children'),
     Input(ids.CYTO_GRAPH, 'tapNodeData'),
-    [State(ids.POP1, 'is_open')],
+    [State(ids.POP1, 'is_open')]
 )
 def display_tap_node_data1(node, is_open):
     if node:
