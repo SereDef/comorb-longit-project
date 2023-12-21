@@ -1,70 +1,82 @@
-require(foreign)
+# devtools::install_github("SereDef/ALSPAC.helpR")
+library(ALSPAC.helpR)
+library(dplyr)
 
 # File name and location 
-filename <- 'EarlyCause_AHupdated_CIDB2957_21OCT21.sav' # change if needed
-datapath <- dirname(file.choose()) # volumes[...] (EarlyCause/WP3/SD/Data)
+filename <- 'EarlyCause_AHupdated_CIDB2957_21OCT21.sav' #  'Cecil_B4195_07Dec23_2.sav'
 
 # Read in the file
-full <- foreign::read.spss(file.path(datapath, filename), 
-                           use.value.labels=F, to.data.frame=T)
-names(full) <- tolower(names(full)) # all column names to lower case
+data <- load_alspac(# volumes[...] (EarlyCause/WP3/SD/Data)
+                    lower.case = TRUE,
+                    keep.value.labels = TRUE,
+                    load.metadata = FALSE)
 
 # Initiate dataframe and set up unique child ID
-data <- data.frame('IDC' = paste(full$cidb2957, # mother ID
-                                 gsub('\\s+', '', full$qlet), # sibling ID (A or B)
-                                 sep = "_"), # --> format "1_A"
-                   'sex' = as.factor(full$kz021)) 
+dset <- data.frame('IDC' = make_idc(mom.id='cidb4195'),
+                   'sex' = data$kz021) # Male, Female
 
 # ==============================================================================
 # -------------------------------- Functions -----------------------------------
 
 # Find variables in the dataset
-f <- function(pref) { print(sort(names(full)[grep(pref, names(full))]))}
+# f <- function(pref) { print(sort(names(data)[grep(pref, names(data))]))}
 
 # Extract and clean depression items
 extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
-  # remove positively worded items (not in SMFQ)
+  
+  # Remove positively worded items (not in SMFQ)
   if (length(remove) > 0) { nrs = nrs[-remove] }
  
   n_adj <- sprintf('%02d', nrs) # add leading 0s to the number sequence
   if(!is.null(plus)) { n_adj <- paste0(n_adj, plus) } # if necessary, add one element at the end
   
-  # identify variables 
-  dep <- full[, paste0(pref, n_adj)]
-  message(ncol(dep), ' items.\nScore:')
-  # any other variables left ? 
-  # print(setdiff(names(full)[grep(pref, names(full))], names(dep)))
-  
-  # rename items 
-  i_adj <- sprintf('%02d', 1:13)
-  names(dep) <- paste0(reporter,'DEP', i_adj)
+  dep <- data %>%
+    # Identify variables 
+    select(paste0(pref, n_adj)) %>%
+    # any other variables left ? 
+    # print(setdiff(names(data)[grep(pref, names(data))], names(dep)))
+    
+    mutate(across(everything(), function(x) { 
+      # Drop empty levels
+      droplevels(x)
+      # Transform response to 0=not true; 1=sometimes true; 2=true
+      x <- case_when((grepl('Not', x, ignore.case=TRUE)) ~ 0, # e.g., 'Not true', 'Not at all' ...
+                     (grepl('Sometimes', x, ignore.case=TRUE)) ~ 1, # e.g. 'Sometimes', 'Sometimes true' ...
+                     (grepl('True', x, ignore.case=TRUE)) ~ 2, # e.g. 'True', '3. True' ...
+                      TRUE ~ NA)
+    }))
 
-  # Transform response to 0=not true; 1=sometimes true; 2=true
-  # note: 22.9y and 23.8y depression scores are reversed for some reason
-  if (age %in% c('ypb9992','ypc2650')) { resc=1 } else { resc=3 }
-  dep <- as.data.frame(sapply(dep, function(x) abs(x-resc) )) 
+  # Rename depression items 
+  names(dep) <- paste0(reporter,'DEP', sprintf('%02d', 1:13))
   
-  # Check the direction is as expected
-  if (any(colMeans(dep, na.rm=T) > 1)) { cat('ATTENTION: check direction of answer scoring!'); print(summary(dep)) }
-  # Take care of reverse phrased items 
-  # rev = which(names(dep) %in% paste0(reporter,'DEP',c('02','08','11',17:22)))
-  # dep[,rev] <- as.data.frame(sapply(dep[,rev], function(x) abs(x-2) ))
+  # Check recoding ( most answers == 0 --> average should be lower than 1 )
+  if (any(colMeans(dep, na.rm=TRUE) > 1)) { 
+    cat('ATTENTION: check direction of answer scoring!')
+    print(summary(dep)) 
+  }
+  # Check the number of items is correct
+  if (ncol(dep) != 13) cat('ATTENTION: There should be 13 items in this score, but ',
+                           ncol(dep), ' where included!')
   
   # Compute total score 
   score_var <- paste0(reporter,'DEP_score')
-  dep[,score_var] <- ifelse(rowSums(is.na(dep))!=ncol(dep), rowSums(dep, na.rm=T), NA)
-  print(summary(dep[,score_var]))
+  dep[,score_var] <- ifelse(rowSums(is.na(dep))!=ncol(dep), rowSums(dep, na.rm=TRUE), NA)
+  message('Score:'); print(summary(dep[,score_var]))
+  
   # Add age variable (in months) and display its descriptives
   age_var = paste0(reporter,'DEP_age')
-  dep[,age_var]<- full[,age]/12
+  dep[,age_var]<- suppressWarnings(as.numeric(levels(data[,age]))[data[,age]] / 12)
   message('\nAge:'); print(summary(dep[,age_var]))
   
   # Histogram 
-  hist(dep[,score_var], main=paste(score_var,round(median(dep[,age_var], na.rm=T),1)), 
-       breaks=max(dep[,score_var], na.rm=T), xlim=c(0, 27)); 
+  hist(dep[,score_var], 
+       main=paste(score_var, round(median(dep[,age_var], na.rm=TRUE),1)), 
+       breaks=max(dep[,score_var], na.rm=TRUE), 
+       xlim=c(0, 27))
   
-  # Add age mark to variable 
-  names(dep) <- paste0(names(dep),'_',round(median(dep[,age_var], na.rm=T),1),'y')
+  # Add age mark to variable names
+  names(dep) <- paste0(names(dep),'_',
+                       round(median(dep[,age_var], na.rm=TRUE),1),'y')
   
   return(dep)
 }
@@ -80,6 +92,7 @@ bmi_calc <- function(h, w, title='BMI', age=''){
 
 # Remove outliers
 rm_outliers <- function(var, cutoff = 5, verbose=TRUE) {
+  
   quants <- quantile(var, probs=c(.25, .75), na.rm=TRUE);
   iqr <- quants[2]-quants[1]
   too_high <- which(var > quants[2]+cutoff*iqr)
@@ -96,21 +109,36 @@ rm_outliers <- function(var, cutoff = 5, verbose=TRUE) {
 # Extract and clean cardio-metabolic items
 extr_cmr <- function(df, age){
   # identify variables 
-  cmr <- as.data.frame(full[, names(df)])
+  cmr <- as.data.frame(data[, names(df)])
+  
+  cmr <- data %>%
+    # Identify variables 
+    select(names(df)) %>%
+    
+    mutate(across(everything(), function(x) { 
+      # Drop empty levels
+      droplevels(x)
+      # Transform to numeric
+      x <- suppressWarnings(as.numeric(levels(x))[x])
+    }))
+  
   # rename them
   names(cmr) <- df
+  
+  browser()
   
   # Remove outliers
   except = which(names(cmr) %in% c('insulin','glucose','triglyc','CRP','IL_6','canabis'))
   if (identical(except, integer(0))) { 
     cmr <- as.data.frame(sapply(cmr, rm_outliers))
-  } else { cmr[,-except] = as.data.frame(sapply(cmr[,-except], rm_outliers)) }
+  } else { 
+    cmr[,-except] = as.data.frame(sapply(cmr[,-except], rm_outliers)) }
   
   # cmr[, except] = as.data.frame(sapply(cmr[, except], rm_outliers, cutoff=10))
   # browser()
   
   # Add age variable (in months) and display its descriptives
-  cmr[,'CMR_age']<- full[,age]/12
+  cmr[,'CMR_age']<- as.numeric(levels(data[,age]))[data[,age]] / 12
   # print(summary(cmr$CMR_age))
   
   # Compute BMI if all info is available
@@ -140,14 +168,14 @@ extr_pub <- function(age, scale=12){
   pubid = substr(age,1,4)
   
   # identify variables 
-  pub <- data.frame('phys_activity'= full[, paste0(pubid,'09')],
-                    # 'age1st_menar'= full[, paste0(pubid,'11')],
+  pub <- data.frame('phys_activity'= data[, paste0(pubid,'09')],
+                    # 'age1st_menar'= data[, paste0(pubid,'11')],
                     # Breasts and pubic hair
-                    'puberty_stage_f'= rowSums(full[, paste0(pubid,c('30','35'))], na.rm = FALSE),
+                    'puberty_stage_f'= rowSums(data[, paste0(pubid,c('30','35'))], na.rm = FALSE),
                     # Testes, scrotum penis and pubic hair
-                    'puberty_stage_m'= rowSums(full[, paste0(pubid,c('50','55'))], na.rm = FALSE),
+                    'puberty_stage_m'= rowSums(data[, paste0(pubid,c('50','55'))], na.rm = FALSE),
                     
-                    'pub_age' = full[, age]/scale
+                    'pub_age' = data[, age]/scale
                     )
   
   # Add age mark to variable 
@@ -179,29 +207,67 @@ extr_pub <- function(age, scale=12){
 
 pdf('histogr_data.pdf') # Note: saved in working directory :) 
 # ------------------------------------------------------------------------------
-mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') # tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
+mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') 
+
+# 67  ku673a  DV: SMFQ depression score (complete cases) Quest Child Based
+# 68  ku673b  DV: SMFQ depression score (prorated) Quest Child Based
+
+# 95  ku705a  DV: SDQ - Prosocial score (complete cases) Quest Child Based
+# 96  ku705b  DV: SDQ - Prosocial score (prorated) Quest Child Based
+# 98  ku706a  DV: SDQ - Hyperactivity score (complete cases) Quest Child Based
+# 99  ku706b  DV: SDQ - Hyperactivity score (prorated) Quest Child Based
+# 101 ku707a  DV: SDQ - Emotional symptoms score (complete cases) Quest Child Based
+# 102 ku707b  DV: SDQ - Emotional symptoms score (prorated) Quest Child Based
+# 104 ku708a  DV: SDQ - Conduct problems score (complete cases) Quest Child Based
+# 105 ku708b  DV: SDQ - Conduct problems score (prorated) Quest Child Based
+# 107 ku709a  DV: SDQ - Peer problems score (complete cases) Quest Child Based
+# 108 ku709b  DV: SDQ - Peer problems score (prorated) Quest Child Based
+# 110 ku710a  DV: SDQ - Total difficulties score (complete cases) Quest Child Based
+# 111 ku710b  DV: SDQ - Total difficulties score (prorated) Quest Child Based
+
+# 38  ku340a B5a: On school days - time child usually wakes up - hours Quest Child Based
+# 39  ku340b B5a: On school days - time child usually wakes up - minutes Quest Child Based
+# 40  ku341a B5b: On school days - time child usually goes to sleep - hours Quest Child Based
+# 41  ku341b B5b: On school days - time child usually goes to sleep - minutes Quest Child Based
+# 42  ku342a B5c: On weekends - time child usually wakes up - hours Quest Child Based
+# 43  ku342b B5c: On weekends - time child usually wakes up - minutes Quest Child Based
+# 44  ku343a B5d: On weekends - time child usually goes to sleep - hours Quest Child Based
+# 45  ku343b B5d: On weekends - time child usually goes to sleep - minutes Quest Child Based
+
+# 48   ku430 B17ia: Child has tried alcohol Quest Child Based
+# 49   ku431 B17ib: Child has tried cigarettes Quest Child Based
+# 50   ku432 B17ic: Child has tried drugs Quest Child Based
+# 51   ku435 B17iia: Age child tried alcohol in years Quest Child Based
+# 52   ku436 B17iib: Age child tried cigarettes in years Quest Child Based
+# 53   ku437 B17iic: Age child tried drugs in years Quest Child Based
+
+# tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
+# ku298 - B1g: Child is slapped or hit
+# ku34.. sleep
+# alcohol, cigarettes, drugs,
+# SDQ
 
 cmr_09.6y <- extr_cmr(data.frame('pub203'='height'), # cm (parent-reported) # 'pub204'='weight'), # kg (parent-reported)
                       age = 'pub295')
 
 # Combine two weight measure (from two DXA visits)
-full[,'f9_weight'] <- rowMeans(full[,c('f9dx010','f9ms057')], na.rm=T)
+data[,'f9_weight'] <- rowMeans(data[,c('f9dx010','f9ms057')], na.rm=T) ### ONLY DXA f9dx010 in AFAR
 # Calculate waist to hip ratio
-full[,'f9_whr'] <- full[,'f9ms018'] / full[,'f9ms020'] # Hip circumference (cm)
+data[,'f9_whr'] <- data[,'f9ms018'] / data[,'f9ms020'] # Hip circumference (cm) ### NOT in AFAR
 
 cmr_09.8y <- extr_cmr(data.frame('f9_weight'='weight', # kg (DXA)
-                                   'f9ms018'='waist_circ', # cm
-                                    'f9_whr'='waist_hip_ratio', # cm
+                                   'f9ms018'='waist_circ', # cm      ### NOT in AFAR
+                                    'f9_whr'='waist_hip_ratio', # cm ### NOT in AFAR
                                    'f9dx135'='total_fatmass', # grams (--> trasformed later)
-                                   'f9dx136'='total_leanmass',# grams (--> trasformed later)
-                                   'f9dx126'='trunk_fatmass', # grams (--> trasformed later)
-                                   'chol_f9'='tot_chol', # mmol/l
-                                    'hdl_f9'='HDL_chol', # mmol/l
-                                    'ldl_f9'='LDL_chol', # mmol/l
-                                'insulin_f9'='insulin',  # mU/L
-                                   'trig_f9'='triglyc',  # mmol/l,
+                                   'f9dx136'='total_leanmass',# grams (--> trasformed later) ### NOT in AFAR
+                                   'f9dx126'='trunk_fatmass', # grams (--> trasformed later) ### NOT in AFAR
+                                   'chol_f9'='tot_chol', # mmol/l  ### NOT in AFAR
+                                    'hdl_f9'='HDL_chol', # mmol/l  ### NOT in AFAR
+                                    'ldl_f9'='LDL_chol', # mmol/l  ### NOT in AFAR
+                                'insulin_f9'='insulin',  # mU/L    ### NOT in AFAR
+                                   'trig_f9'='triglyc',  # mmol/l, ### NOT in AFAR
                                     'crp_f9'='CRP', # mg/L
-                                    'il6_f9'='IL_6'), # Interleukin 6 (pg/ml)
+                                    'il6_f9'='IL_6'), # Interleukin 6 (pg/ml) ### NOT in AFAR
                       age = 'f9003c') # f9006c REVISIT? 196 children came twice, mostly 1 month apart
 
 # Add BMI, FMI, TMI and LMI
@@ -260,7 +326,7 @@ cmr_10.6y <- extr_cmr(data.frame('fdms018'='waist_circ', # cm
 mdep_11.7y <- extr_dep('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
 
 # Calculate waist to hip ratio
-full$fems_whr <- full[,'fems018'] / full[,'fems020'] # Hip circumference (cm)
+data$fems_whr <- data[,'fems018'] / data[,'fems020'] # Hip circumference (cm)
 cmr_11.7y <- extr_cmr(data.frame( 'pub403'='height', # cm (parent-reported) # Note: age slightly different ('pub497a')
                                  'fedx016'='weight', # kg --> 'pub404'='weight', # kg (parent-reported)
                                  'fems018'='waist_circ', # cm 
@@ -389,8 +455,8 @@ cmr_17.0y <- extr_cmr(data.frame('pub903'='height',  # cm (parent-reported)
 dep_17.8y <- extr_dep('ccxd9', 0:15, remove=c(2,8,11), age = 'ccxd006') # (05 in years), CCXD917 total score
 
 # Combine some three BP measurements
-full$fjel_sbp <- rowMeans(full[,c('fjel036','fjel040')], na.rm=T) # excluding first measurement 'fjel032'
-full$fjel_dbp <- rowMeans(full[,c('fjel037','fjel041')], na.rm=T) # excluding first measurement 'fjel033'
+(names(data)[grep(pref, names(data))])$fjel_sbp <- rowMeans(data[,c('fjel036','fjel040')], na.rm=T) # excluding first measurement 'fjel032'
+data$fjel_dbp <- rowMeans(data[,c('fjel037','fjel041')], na.rm=T) # excluding first measurement 'fjel033'
 
 # Calculate cardiac measurements: 
 # Left ventricular mass (LVM) (g) = 0.8⋅[1.04⋅((LVEDD + IVSd + PWd)^3 − LVEDD^3)] + 0.6, where:
@@ -398,22 +464,22 @@ full$fjel_dbp <- rowMeans(full[,c('fjel037','fjel041')], na.rm=T) # excluding fi
 # IVSd – Interventricular septal end-diastole, given in centimeters (cm);
 # PWd – Posterior wall thickness at end-diastole, given in centimeters (cm); and
 # 1.04 – Heart muscle density in g/cm³.
-full$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(full[,c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
+data$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
                                                 'fjgr031',  # Average interventricular septum in diastole (cm)
                                                 'fjgr053')] # Average posterior wall thickness in diastole (cm)
-                                     )^3 - full[,'fjgr043']^3 ) ) + 0.6
+                                     )^3 - data[,'fjgr043']^3 ) ) + 0.6
 
 # Relative wall thickness (RWT), defined as 2 times posterior wall thickness divided by the LV diastolic diameter
-full$fjgr_RWT <- 2 * full[,'fjgr053'] / full[,'fjgr043']
+data$fjgr_RWT <- 2 * data[,'fjgr053'] / data[,'fjgr043']
 # Ejection fraction (%) is estimated by fractional shortening (%), calculated using Teichholz's formula:
 # FS = (LV end-diastolic dimension – LV end-systolic dimension) / LV end-diastolic dimension
 # fjgr047 = Average left ventricular internal diameter during systole (cm)
-full$fjgr_FS <- (full[,'fjgr043'] - full[,'fjgr047']) / full[,'fjgr043'] * 100
+data$fjgr_FS <- (data[,'fjgr043'] - data[,'fjgr047']) / data[,'fjgr043'] * 100
 
 # cigarette smoking 
-full$fjsm_tot <- full[,'fjsm500'] # weekly number of cigarettes 
-full$fjsm_tot[is.na(full$fjsm_tot) & (full[,'fjsm350']==2 & full[,'fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
-full$fjsm_tot[is.na(full$fjsm_tot)] <- full[is.na(full$fjsm_tot), 'fjsm400']*7 # daily cigarettes present but weekly NA
+data$fjsm_tot <- data[,'fjsm500'] # weekly number of cigarettes 
+data$fjsm_tot[is.na(data$fjsm_tot) & (data[,'fjsm350']==2 & data[,'fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
+data$fjsm_tot[is.na(data$fjsm_tot)] <- data[is.na(data$fjsm_tot), 'fjsm400']*7 # daily cigarettes present but weekly NA
 
 cmr_17.8y <- extr_cmr(data.frame('fjmr020'='height', # cm
                               'fjmr022'='weight', # kg
@@ -522,20 +588,20 @@ dep_23.8y <- extr_dep('ypc16', 50:67, remove=c(3,8,12,15,17), age = 'ypc2650')
 # ------------------------------------------------------------------------------
 
 # Combine left and right mean IMT measurements (also min and ax available)
-full$fkcv_imt <- rowMeans(full[,c('fkcv1131','fkcv2131')], na.rm=T)
+data$fkcv_imt <- rowMeans(data[,c('fkcv1131','fkcv2131')], na.rm=T)
 # 24.5 anthropometry needs to be recoded into cm
-full$fkms_height    <- full[,'fkms1000']/10
-full$fkms_waistcirc <- full[,'fkms1052']/10
+data$fkms_height    <- data[,'fkms1000']/10
+data$fkms_waistcirc <- data[,'fkms1052']/10
 # Calculate waist to hip ratio
-full$fkms_whr <- full[,'fkms_waistcirc'] / (full[,'fkms1062']/10) # Hip circumference (trans in cm)
+data$fkms_whr <- data[,'fkms_waistcirc'] / (data[,'fkms1062']/10) # Hip circumference (trans in cm)
 
 # Calculate cardiac measurements (see formulas above)
-full$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(full[,c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
+data$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
                                                 'fkec5050',  # Average thinkness LV interventricular septum in diastole (cm)
                                                 'fkec5180')] # Average LV posterior wall Diastolic thickness (cm)
-                                         )^3 - full[,'fjgr043']^3 ) ) + 0.6
-full$fkec_RWT <- 2 * full[,'fkec5180'] / full[,'fkec5080']
-full$fkec_FS <- abs( (full[,'fkec5080'] - full[,'fkec5090']) / full[,'fkec5080'] * 100 ) 
+                                         )^3 - data[,'fjgr043']^3 ) ) + 0.6
+data$fkec_RWT <- 2 * data[,'fkec5180'] / data[,'fkec5080']
+data$fkec_FS <- abs( (data[,'fkec5080'] - data[,'fkec5090']) / data[,'fkec5080'] * 100 ) 
 
 cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
                                  'fkms1030'='weight',    # kg
@@ -645,20 +711,20 @@ pub_17.0y <- extr_pub(age='pub997a')
 # Parental education (measured at 5.1 years)
 # NOTE: other education levels present but don't know what to do with them ...
 
-m_edu = ifelse( !is.na(full$k6280), 0, # 'no educational qualification'
-        ifelse( !is.na(full$k6292), 2, # 'University degree'
-        ifelse( !is.na(full$k6281)     # 'CSE/GCSE (D,E,F,G)'
-              | !is.na(full$k6282)     # 'O-level/GCSE (A,B,C)'
-              | !is.na(full$k6283)     # 'A-levels'
-              | !is.na(full$k6284), 1, # 'vocational qualification'
+m_edu = ifelse( !is.na(data$k6280), 0, # 'no educational qualification'
+        ifelse( !is.na(data$k6292), 2, # 'University degree'
+        ifelse( !is.na(data$k6281)     # 'CSE/GCSE (D,E,F,G)'
+              | !is.na(data$k6282)     # 'O-level/GCSE (A,B,C)'
+              | !is.na(data$k6283)     # 'A-levels'
+              | !is.na(data$k6284), 1, # 'vocational qualification'
         NA))) 
 
-p_edu = ifelse( !is.na(full$k6300), 0, # 'no educational qualification'
-        ifelse( !is.na(full$k6312), 2, # 'University degree'
-        ifelse( !is.na(full$k6301)     # 'CSE/GCSE (D,E,F,G)'
-              | !is.na(full$k6302)     # 'O-level/GCSE (A,B,C)'
-              | !is.na(full$k6303)     # 'A-levels'
-              | !is.na(full$k6304), 1, # 'vocational qualification'
+p_edu = ifelse( !is.na(data$k6300), 0, # 'no educational qualification'
+        ifelse( !is.na(data$k6312), 2, # 'University degree'
+        ifelse( !is.na(data$k6301)     # 'CSE/GCSE (D,E,F,G)'
+              | !is.na(data$k6302)     # 'O-level/GCSE (A,B,C)'
+              | !is.na(data$k6303)     # 'A-levels'
+              | !is.na(data$k6304), 1, # 'vocational qualification'
               NA))) 
 
 parent_edu <- data.frame('m_edu' = m_edu, 
@@ -667,7 +733,7 @@ parent_edu <- data.frame('m_edu' = m_edu,
 # ==============================================================================
 
 #cat(ls(), sep=", ")
-data <- cbind(data, 
+d <- cbind(d, 
      mdep_09.6y, cmr_09.6y, cmr_09.8y, 
       dep_10.6y, cmr_10.6y, cmr_10.7y, 
      mdep_11.7y, cmr_11.7y, #_1, cmr_11.7y_2, 
@@ -689,28 +755,28 @@ data <- cbind(data,
 
 # Select groups of variables  
 sel <- function(var, times=NULL){
-  subs = names(data)[grep(paste(var, collapse='|'), names(data))]
+  subs = names(d)[grep(paste(var, collapse='|'), names(d))]
   if (!is.null(times)) { subs = subs[grep(paste(paste0('_',times), collapse='|'), subs)] }
-  # print(summary(data[,subs]))
+  # print(summary(d[,subs]))
   return(subs)
 }
 
 # Convert fat/lean mass variables into kg (variances are too large otherwise)
-data[, sel('mass')] <- data[, sel('mass')] / 1000
+d[, sel('mass')] <- d[, sel('mass')] / 1000
 
 # ------------------------------------------------------------------------------
 # remove all unnecessary attributes that may corrupt the file
-for (var in colnames(data)) {
-  attr(data[,deparse(as.name(var))], "names") <- NULL
-  attr(data[,deparse(as.name(var))], "value.labels") <- NULL
+for (var in colnames(d)) {
+  attr(d[,deparse(as.name(var))], "names") <- NULL
+  attr(d[,deparse(as.name(var))], "value.labels") <- NULL
 }
 
 # save and run -----------------------------------------------------------------
 
-crm <- cor(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
-# vcm <- cov(data[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
+crm <- cor(d[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
+# vcm <- cov(d[,-c(1,2)], method='spearman', use='pairwise.complete.obs')
 
-saveRDS(data, 'raw_data.rds'); write.csv(data,'raw_data.csv')
+saveRDS(d, 'raw_data.rds'); write.csv(d,'raw_data.csv')
 
 # write.csv(vcm, 'varcov_matrix.csv')
 write.csv(crm, 'corr_matrix.csv')
