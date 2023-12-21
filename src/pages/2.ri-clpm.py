@@ -115,7 +115,7 @@ layout = dbc.Row([
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH_RICLPM,
                                                layout={'name': 'preset', 'fit': False},
-                                               style={'width': '100%', 'height': '51vh'},
+                                               style={'width': '100%', 'height': '55vh'},
                                                elements=make_net_riclpm('sDEP', 'FMI'),
                                                stylesheet=style_net_riclpm,
                                                minZoom=1, maxZoom=1)  # disable user zooming

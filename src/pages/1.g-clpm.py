@@ -117,7 +117,7 @@ layout = dbc.Row([
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH,
                                                layout={'name': 'preset', 'fit': False},
-                                               style={'width': '100%', 'height': '51vh'},
+                                               style={'width': '100%', 'height': '55vh'},
                                                elements=make_net_gclpm('sDEP', 'FMI'),
                                                stylesheet=style_net_gclpm,
                                                minZoom=1, maxZoom=1)  # disable user zooming
