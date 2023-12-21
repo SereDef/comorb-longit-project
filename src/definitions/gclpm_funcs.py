@@ -1,45 +1,16 @@
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
-
 import pandas as pd
 import pyreadr
 import textwrap
 
 import definitions.layout_styles as styles
+
 from definitions.general_funcs import badge_it, get_label
 
 
 # -- Frontend --------------------
-def dep_var_checklist(disable_maternal=False):
-    """Defines the radio buttons used to select self vs. maternal reports of depression."""
-    opts = [{'label': 'Self-reported', 'value': 'sDEP', 'disabled': False},
-            {'label': 'Maternal report', 'value': 'mDEP', 'disabled': disable_maternal}]
-    return opts
-
-
-def cmr_var_checklist(reporter='s'):
-    """Defines the dropdown menu used to select the CMR marker to model."""
-
-    # Manually define the order of the markers to display
-    sortd = ['FMI', 'LMI', 'BMI', 'waist_circ', 'android_fatmass', 'total_fatmass', 'total_leanmass',
-             'tot_chol', 'HDL_chol', 'LDL_chol', 'insulin', 'triglyc', 'CRP']
-
-    opts = [{'value': v, 'label': get_label(v) + f' ({v})' if len(v) < 4 else get_label(v), 'disabled': False} for v in
-            sortd]
-
-    # Disable options for which no maternal depression model was estimated
-    if reporter == 'm':
-        sortd_m = ['FMI', 'LMI', 'BMI', 'waist_circ', 'total_fatmass', 'total_leanmass']
-        for i in opts:
-            if i['value'] not in sortd_m:
-                i['disabled'] = True
-
-    return opts
-
-
 def param_checklist(depname, cmrname, p='lt', best=False, badgefont=styles.TEXT['font-size']):
     """Defines the checkboxes used to determine model structure (what parameters to estimate)."""
 
@@ -91,7 +62,7 @@ def make_button(label, id_name, color, margin='15px', fs=styles.TEXT['font-size'
 model_structure = pd.read_csv('./assets/model_structure.csv').set_index('Unnamed: 0')
 
 
-def read_res1(depname, cmrname, lambdas='free', params='stat', path='./assets/results/mod1/'):
+def read_res_gclpm(depname, cmrname, lambdas='free', params='stat', path='./assets/results/mod1/'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker, + stationarity assumptions for lambdas and long term parameters ('free' vs. 'stat').
        Open the .RData file created by Rscript 1.GCLPM (one for dep-cmr marker pair).
@@ -116,7 +87,7 @@ def read_res1(depname, cmrname, lambdas='free', params='stat', path='./assets/re
     return summ, fitm, esti, fail
 
 
-def best_fit1(depname, cmrname, lambdas, params, list1=None):
+def best_fit_gclpm(depname, cmrname, lambdas, params, list1=None):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker.
        By default, returns a dataframe with the model name (indicating the excluded parameters) and structure (0,1...).
@@ -133,78 +104,7 @@ def best_fit1(depname, cmrname, lambdas, params, list1=None):
         return pd.DataFrame(model_structure[mod])
 
 
-def make_plot1(depname, cmrname):
-    """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
-       marker.
-       Creates an interactive scatterplot figure with time of measurement on the x-axis and values of
-       dep and cmr markers on the (double) y-axis. Markers indicate the median [IQR] of each measure. Median values and
-       time points are also displayed when hovering over the points.
-    """
-    # load summary dataframe
-    summ = read_res1(depname, cmrname)[0]
-
-    # extract timepoints
-    t_dep = [float(x.split('_')[-1][:-1]) for x in summ.columns[:summ.shape[1] // 2]]
-    t_cmr = [float(x.split('_')[-1][:-1]) for x in summ.columns[summ.shape[1] // 2:]]
-
-    # scatterplot function
-    def scat(t, name, fullname, shortname):
-        means = summ.loc['Median', summ.columns.str.contains(name)]
-        p = go.Scatter(x=t, y=means,
-                       error_y=dict(type='data', symmetric=False,  # visible=True,
-                                    array=summ.loc['3rd Qu.', summ.columns.str.contains(name)] - means,
-                                    arrayminus=means - summ.loc['1st Qu.', summ.columns.str.contains(name)]),
-                       name=fullname, text=[f'{shortname} {n}' for n in range(1, len(t) + 1)],
-                       marker=dict(size=10, symbol='square', opacity=.8), opacity=.7,
-                       hovertemplate="""<b>%{text}</b> <br> Median: %{y:.2f} <br> Timepoint: %{x} years \
-                       <br><extra></extra>""")
-        return p
-
-    fig = make_subplots(
-        specs=[[{'secondary_y': True}]])  # Specify a double y axis to allow for different scale of depression and CMR
-
-    fig.add_trace(scat(t_dep, depname, 'Depression score', 'DEP'), secondary_y=False)
-    fig.add_trace(scat(t_cmr, cmrname, cmrname, cmrname), secondary_y=True)
-
-    # Set y-axes
-    def yrange(name):
-        sub = summ.filter(like=name)
-        ymin = sub.min(axis=1)['1st Qu.']
-        ymax = sub.max(axis=1)['3rd Qu.']
-        rang = ymax - ymin
-        y_max_lower = ymax
-        ymin = ymin - (rang / 10)
-        ymax = ymax + (rang / 10)
-        return [ymin, ymax, y_max_lower]
-
-    fig.update_yaxes(title_text='<b>Depression score</b>', secondary_y=False, range=yrange(depname)[:2],
-                     mirror=True, ticks='outside', showline=True, linecolor='black', gridcolor='lightgrey')
-    fig.update_yaxes(title_text=f'<b>{cmrname}</b>', secondary_y=True, range=yrange(cmrname)[:2],
-                     mirror=True, ticks='outside', showline=True, linecolor='black', gridcolor='lightgrey')
-    # Set x-axis
-    fig.update_xaxes(title_text='Years', mirror=True, ticks='outside', showline=True, linecolor='black',
-                     gridcolor='lightgrey')
-
-    # Group "cross-sectional" time points using grey background
-    crosspoints = []
-    for i in range(len(t_dep)):
-        xmin = min(t_dep[i], t_cmr[i]) - .2
-        xmax = max(t_dep[i], t_cmr[i]) + .2
-        # rectangles
-        crosspoints.append(dict(x0=str(xmin), x1=str(xmax), y0=0, y1=1, xref='x', yref='paper',
-                                type='rect', fillcolor='lightgray', opacity=.3, line_width=0, layer='below'))
-        # text
-        fig.add_trace(go.Scatter(x=[xmin + (xmax - xmin) / 2], y=[yrange(depname)[2]], mode='text', text=i + 1,
-                                 textposition='top center',
-                                 textfont_size=13, textfont_color='dimgray', showlegend=False))
-    # Background
-    fig.update_layout(  # title = dict(text='Included measures\n', font=dict(size=15), automargin=True, yref='paper'),
-        plot_bgcolor='white', shapes=crosspoints, margin=dict(l=20, r=20, t=20, b=20))
-
-    return fig
-
-
-def make_net1(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
+def make_net_gclpm(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr',
               net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure and size of the graph.
@@ -212,11 +112,11 @@ def make_net1(depname, cmrname, lambdas='free', params='stat', which_model='maAR
        This only creates the core structure, style parameters are defined in style_sheet1.
     """
     # read data
-    summ, _, esti, fail = read_res1(depname, cmrname, lambdas, params)
+    summ, _, esti, fail = read_res_gclpm(depname, cmrname, lambdas, params)
 
     # Best fitting model
     if which_model == 'best':
-        modstr = best_fit1(depname, cmrname, lambdas, params).T
+        modstr = best_fit_gclpm(depname, cmrname, lambdas, params).T
     elif which_model in fail:
         return 'fail'
     else:
@@ -350,7 +250,7 @@ def make_net1(depname, cmrname, lambdas='free', params='stat', which_model='maAR
 # Define the stile of the graph
 width = styles.CLPM_WIDTH
 
-style_net1 = [
+style_net_gclpm = [
     # Noting down names
     {'selector': '.notes',
      'style': {'background-color': 'white', 'font-size': styles.CLPM_NODE_LABEL,
@@ -405,7 +305,7 @@ d = {'AR': ['red', styles.CLPM_WIDTH/25],
      'maCL': ['lightblue', styles.CLPM_WIDTH/20]}
 
 for c in d.keys():
-    style_net1.extend([{'selector': f'[label *= "{c}"][sign > 0]',
+    style_net_gclpm.extend([{'selector': f'[label *= "{c}"][sign > 0]',
                         'style': {'line-color': d[c][0],
                                   'target-arrow-color': d[c][0],
                                   'source-label': 'data(weight)',
@@ -429,21 +329,21 @@ for c in d.keys():
                        ])
 
 
-def make_table1(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
+def make_table_gclpm(depname, cmrname, lambdas='free', params='stat', which_model='maAR_dep-maCL_dep-maAR_cmr-maCL_cmr'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure.
        Extracts the fit measures for the specified model and stores into a table to be displayed next to the graph.
     """
-    fitm = read_res1(depname, cmrname, lambdas, params)[1]
+    fitm = read_res_gclpm(depname, cmrname, lambdas, params)[1]
 
     if which_model == 'best':
         which_model = fitm.index[fitm.bic == fitm.bic.min()][0]  # Best fitting model (lowest BIC)
 
     dt = pd.DataFrame(
-        fitm.loc[which_model, ['npar', 'df', 'chisq', 'pvalue', 'cfi', 'tli', 'rmsea', 'srmr', 'aic', 'bic', ]])
+        fitm.loc[which_model, ['ntotal','npar', 'df', 'chisq', 'pvalue', 'cfi', 'tli', 'rmsea', 'srmr', 'aic', 'bic', ]])
     dt = dt.rename(columns={which_model: ' '}).round(3).astype('object')
     dt.insert(loc=0, column='Fit measures',
-              value=['Number of parameters', 'Degrees of freedom', '\u03C7\u00b2', 'P-value (\u03C7\u00b2)',
+              value=['Sample size','Number of parameters', 'Degrees of freedom', '\u03C7\u00b2', 'P-value (\u03C7\u00b2)',
                      'CFI', 'TLI', 'RMSEA', 'SRMR', 'AIC', 'BIC'])
 
     def format_row(x, form):
@@ -453,7 +353,7 @@ def make_table1(depname, cmrname, lambdas='free', params='stat', which_model='ma
             return x
 
     format_dict = {
-        '{:d}': ['npar', 'df'],  # integers
+        '{:d}': ['ntotal','npar', 'df'],  # integers
         '{0:.1f}': ['aic', 'bic'],  # 1 decimal point
         '{0:.2f}': ['chisq', 'cfi', 'tli', 'rmsea', 'srmr'],  # 2 decimal points
         '{0:.3f}': ['pvalue'],  # 3 decimal points

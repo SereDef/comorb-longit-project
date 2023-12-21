@@ -144,10 +144,9 @@ layout = dbc.Row([
                           'This includes 13 symptoms of depression from the Short Mood and Feelings Questionnaire (SMFQ), \
                           completed by mothers (', badge_it(' ', color='rgb(148, 103, 189)', pad='6px 7px'),
                           ') or participants themselves (', badge_it(' ', color='rgb(71, 107, 237)', pad='6px 7px'),
-                          ') at several time points across 15 years. We also measured a total of 25 physical health \
-                          markers (', badge_it(' ', color='rgb(214, 39, 40)', pad='6px 7px'),
-                          '), spanning from anthropometry to inflammation. Hover over graph below for more information \
-                          about these data points.'],
+                          ') at several time points across 15 years.', wrap_it(), 'We also measured a total of 25 physical \
+                          health markers (', badge_it(' ', color='rgb(214, 39, 40)', pad='6px 7px'), '), spanning from \
+                          anthropometry to inflammation. Hover over graph below for more information about these data points.'],
                          style=styles.TEXT),
                 html.Hr(),
 

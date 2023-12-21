@@ -1,9 +1,3 @@
-from dash import html, dcc
-import dash_bootstrap_components as dbc
-
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
-
 import pandas as pd
 import pyreadr
 import textwrap
@@ -11,11 +5,9 @@ import textwrap
 import definitions.layout_styles as styles
 from definitions.general_funcs import badge_it, get_label
 
-from definitions.gclpm_funcs import read_res1
-
 # -- Backend ---------------------
 
-def read_res_riclpm(depname, cmrname, params='stat', path='./assets/results/mod1/'):
+def read_res_riclpm(depname, cmrname, params='stat', sex='', path='./assets/results/mod1/'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker, + stationarity assumptions for long term parameters ('free' vs. 'stat').
        Open the .RData file created by Rscript 1.RICLPM (one for dep-cmr marker pair).
@@ -23,31 +15,44 @@ def read_res_riclpm(depname, cmrname, params='stat', path='./assets/results/mod1
        - fm: fit measures
        - estimates: unstandardized estimates (+ robust SE, pvalues and CIs)
     """
-    res = pyreadr.read_r(f'{path}ri_p{params}/{depname}_{cmrname}.RData')
+    sexdict = {'m': '_sex_1', 'f': '_sex_2', '': ''}
 
+    res = pyreadr.read_r(f'{path}ri_p{params}/{depname}_{cmrname}{sexdict[sex]}.RData')
+
+    cors = res['c']
     fitm = res['fm'].T
 
     esti = res['estimates']
     esti['sign'] = [0 if low <= 0 <= upp else 1 for low, upp in
                     zip(esti['ci.lower'], esti['ci.upper'])]  # based on CI because pvalue is sometimes NA
+    # Add standardized estimates
+    esti.insert(5, 'std_est', res['stad_esti'])
+    # Make covariance easier to query
+    if params == 'free':
+        esti['label'].replace('cor1', 'rcov1', inplace=True)
 
-    return fitm, esti
+    return fitm, esti, cors
 
 
-def make_net_riclpm(depname, cmrname, params='stat', net_width=styles.CLPM_WIDTH):
+def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model stationarity and size of the graph.
        Creates a list of dictionaries to use as input for the elements arg of cytoscape graph.
        This only creates the core structure, style parameters are defined in style_sheet1.
     """
     # read data
-    summ = read_res1(depname, cmrname, params, params)[0]
-    esti = read_res_riclpm(depname, cmrname, params)[1]
+    _, esti, cor = read_res_riclpm(depname, cmrname, params, sex)
+
+    # load summary dataframe
+    summ = pyreadr.read_r(f'./assets/results/mod1/g_lstat_pstat/{depname}_{cmrname}.RData')['dat_summ']
 
     # Extract the estimated parameters from the result files (returns estimates and significance [= '*' or '']
     def extr_est(name):
+        if params == 'free':
+            name = name.replace('cor', 'rcov')
+
         e, l, u, s = esti.loc[esti.label.str.contains(name)][
-            ['est', 'ci.lower', 'ci.upper', 'sign']].round(2).iloc[0]
+            ['std_est', 'ci.lower', 'ci.upper', 'sign']].round(2).iloc[0]
         return e, l, u, s
 
     # Ready to draw
@@ -92,7 +97,7 @@ def make_net_riclpm(depname, cmrname, params='stat', net_width=styles.CLPM_WIDTH
     for i in range(1, nt + 1):
 
         elm.append({'data': {'source': f'imp_dep{i}', 'target': f'imp_cmr{i}', 'firstname': 'imp_cov',
-                             'label': '%.2f' % extr_est(f'cov{i}')[0]}})
+                             'label': '%.2f' % extr_est(f'cor{i}')[0]}})
 
         for ri, v in enumerate(vs):
 
@@ -129,19 +134,30 @@ def make_net_riclpm(depname, cmrname, params='stat', net_width=styles.CLPM_WIDTH
                 # time adjustment
                 t1 = timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}']
                 t2 = timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}']
+
+                def calc_weight(term, vname, index):
+                    if term == 'AR':
+                        t = timedic[f'{vname}{index + 1}'] - timedic[f'{vname}{index}']
+                    elif term == 'CL':
+                        t = timedic[f'{vname}{index + 1}'] - timedic[f'{vs[otherv]}{index}']
+
+                    if params == 'free':
+                        t = 1 / t  # divide by time if not stationary
+
+                    weight = '%.2f\n[%.2f; %.2f]' % (extr_est(f'{term}_{vname}{index}')[0] * t,
+                                                     extr_est(f'{term}_{vname}{index}')[1] * t,
+                                                     extr_est(f'{term}_{vname}{index}')[2] * t)
+                    return weight
+
                 # AR and CL terms
                 elm.extend([{'data': {'source': f'imp_{v}{i}', 'target': f'imp_{v}{i + 1}',
-                                      'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'AR_{v}{i}')[0] * t1,
-                                                                        extr_est(f'AR_{v}{i}')[1] * t1,
-                                                                        extr_est(f'AR_{v}{i}')[2] * t1),
+                                      'weight': calc_weight('AR', v, i),
                                       'sign': extr_est(f'AR_{v}{i}')[3],
                                       'label': f'AR{i}',
                                       'firstname': 'direct'}},
 
                             {'data': {'source': f'imp_{vs[otherv]}{i}', 'target': f'imp_{v}{i + 1}',
-                                      'weight': '%.2f\n[%.2f; %.2f]' % (extr_est(f'CL_{v}{i}')[0] * t2,
-                                                                       extr_est(f'CL_{v}{i}')[1] * t2,
-                                                                       extr_est(f'CL_{v}{i}')[2] * t2),
+                                      'weight': calc_weight('CL', v, i),
                                       'sign': extr_est(f'CL_{v}{i}')[3],
                                       'label': f'CL{i}',
                                       'firstname': 'direct'}}
@@ -230,18 +246,18 @@ for c in d.keys():
                        ])
 
 
-def make_table_riclpm(depname, cmrname, params='stat'):
+def make_table_riclpm(depname, cmrname, params='stat', sex=''):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model structure.
        Extracts the fit measures for the specified model and stores into a table to be displayed next to the graph.
     """
-    fitm = read_res_riclpm(depname, cmrname, params)[0]
+    fitm = read_res_riclpm(depname, cmrname, params, sex)[0]
 
     dt = pd.DataFrame(
-        fitm[['npar', 'df', 'chisq', 'pvalue', 'cfi', 'tli', 'rmsea', 'srmr', 'aic', 'bic']]).T
+        fitm[['ntotal','npar', 'df', 'chisq', 'pvalue', 'cfi', 'tli', 'rmsea', 'srmr', 'aic', 'bic']]).T
     dt = dt.rename(columns={'lavaan::fitmeasures(m)': ' '}).round(3).astype('object')
     dt.insert(loc=0, column='Fit measures',
-              value=['Number of parameters', 'Degrees of freedom', '\u03C7\u00b2', 'P-value (\u03C7\u00b2)',
+              value=['Sample size', 'Number of parameters', 'Degrees of freedom', '\u03C7\u00b2', 'P-value (\u03C7\u00b2)',
                      'CFI', 'TLI', 'RMSEA', 'SRMR', 'AIC', 'BIC'])
 
     def format_row(x, form):
@@ -251,7 +267,7 @@ def make_table_riclpm(depname, cmrname, params='stat'):
             return x
 
     format_dict = {
-        '{:d}': ['npar', 'df'],  # integers
+        '{:d}': ['ntotal', 'npar', 'df'],  # integers
         '{0:.1f}': ['aic', 'bic'],  # 1 decimal point
         '{0:.2f}': ['chisq', 'cfi', 'tli', 'rmsea', 'srmr'],  # 2 decimal points
         '{0:.3f}': ['pvalue'],  # 3 decimal points

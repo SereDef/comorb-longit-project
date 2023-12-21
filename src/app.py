@@ -17,8 +17,8 @@ server = app.server
 
 navbar_content = [
     dbc.NavItem(dbc.NavLink('Data overview', href='/', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-lag panel model (1)', href='/gclpm', active='exact')),
-    dbc.NavItem(dbc.NavLink('Cross-lag panel model (2)', href='/riclpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Random-intercept cross-lag panel model (RI-CLPM)', href='/riclpm', active='exact')),
+    dbc.NavItem(dbc.NavLink('Generalized cross-lag panel model (gCLPM)', href='/gclpm', active='exact')),
     dbc.NavItem(dbc.NavLink('Cross-lag network model', href='/clnm', active='exact')),
     dbc.NavItem(dbc.NavLink('Cross-sectional network models', href='/csnm', active='exact'))
 ]
@@ -34,7 +34,8 @@ app.layout = html.Div([
     # CONTENT
     dbc.Row(
         dbc.Col(width={'size': 10, 'offset': 1},
-                children=[dbc.Nav(navbar_content, pills=True, fill=True,
+                children=[dbc.Nav(navbar_content,
+                                  pills=True, fill=True,
                                   style=styles.NAVBAR)])
     ),
     html.Br(),

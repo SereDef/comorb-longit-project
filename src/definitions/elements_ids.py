@@ -13,6 +13,7 @@ FAILED_MODEL = 'failed-model'
 DEP_SELECTION_RICLPM = 'dep-selection-riclpm'
 CMR_SELECTION_RICLPM = 'cmr-selection-riclpm'
 STAT_CHECKLIST_RICLPM = 'stat-checklist-riclpm'
+SEX_SELECTION_RICLPM = 'strata-selection-riclpm'
 
 TIME_GRAPH = 'time-graph'
 CYTO_GRAPH = 'cyto-graph'
