@@ -115,7 +115,7 @@ layout = dbc.Row([
                             children=[
                                 cyto.Cytoscape(id=ids.CYTO_GRAPH_RICLPM,
                                                layout={'name': 'preset', 'fit': False},
-                                               style={'width': '100%', 'height': '55vh'},
+                                               style={'width': '100%', 'height': styles.CLPM_HEIGHT},
                                                elements=make_net_riclpm('sDEP', 'FMI'),
                                                stylesheet=style_net_riclpm,
                                                minZoom=1, maxZoom=1)  # disable user zooming
@@ -127,7 +127,7 @@ layout = dbc.Row([
                                                children=[dbc.Table.from_dataframe(
                                                    df=make_table_riclpm('sDEP', 'FMI'),
                                                    style={'font-size': styles.CLPM_TABLE_TEXT},
-                                                   color='light', striped=True, bordered=True, hover=True, size='lg')])
+                                                   color='light', striped=True, bordered=True, hover=True, size='md')])
                                       ])
                 ], justify='between'),
 

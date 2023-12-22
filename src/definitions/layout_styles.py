@@ -12,9 +12,10 @@ SELECTION_PANEL_COLOR = '#F8F9FA'  # light grey
 NAVBAR_COLOR = '#0d6efd'  # default blue from dbc
 
 OVERVIEW_WIDTH = 1500
-OVERVIEW_LABELS = {'size': OVERVIEW_WIDTH/100-1}
+OVERVIEW_LABELS = {'size': OVERVIEW_WIDTH/100-2}
 
 CLPM_WIDTH = 850
+CLPM_HEIGHT = '60vh'
 CLPM_NODE_SIZE = 18  # height and width of latent variables
 CLPM_NODE_LABEL = 12  # Observed variables text size
 CLPM_EDGE_LABEL = 10  # Edges' labels text size
