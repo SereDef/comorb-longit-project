@@ -17,19 +17,25 @@ def read_res_riclpm(depname, cmrname, params='stat', sex='', path='./assets/resu
     """
     sexdict = {'m': '_sex_1', 'f': '_sex_2', '': ''}
 
-    res = pyreadr.read_r(f'{path}ri_p{params}/{depname}_{cmrname}{sexdict[sex]}.RData')
+    std = ''  # '_std'
+
+    res = pyreadr.read_r(f'{path}ri_p{params}{std}/{depname}_{cmrname}{sexdict[sex]}.RData')
 
     cors = res['c']
-    fitm = res['fm'].T
+    fitm = res['fit_meas'].T
 
     esti = res['estimates']
-    esti['sign'] = [0 if low <= 0 <= upp else 1 for low, upp in
-                    zip(esti['ci.lower'], esti['ci.upper'])]  # based on CI because pvalue is sometimes NA
+
     # Add standardized estimates
-    esti.insert(5, 'std_est', res['stad_esti'])
-    # Make covariance easier to query
-    if params == 'free':
-        esti['label'].replace('cor1', 'rcov1', inplace=True)
+    if std != '':
+        esti[['est', 'ci.lower', 'ci.upper', 'pvalue']] = res['stad_esti']
+    else:
+        # Make covariance easier to query
+        esti['label'].replace({'rcov': 'cor'}, regex=True, inplace=True)
+
+    esti['sign'] = [0 if p > 0.05 else 1 for p in esti['pvalue']]
+    # [0 if low <= 0 <= upp else 1 for low, upp in zip(esti['ci.lower'], esti['ci.upper'])]
+    # based on CI because pvalue is sometimes NA
 
     return fitm, esti, cors
 
@@ -48,11 +54,9 @@ def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CL
 
     # Extract the estimated parameters from the result files (returns estimates and significance [= '*' or '']
     def extr_est(name):
-        if params == 'free':
-            name = name.replace('cor', 'rcov')
 
         e, l, u, s = esti.loc[esti.label.str.contains(name)][
-            ['std_est', 'ci.lower', 'ci.upper', 'sign']].round(2).iloc[0]
+            ['est', 'ci.lower', 'ci.upper', 'sign']].round(2).iloc[0]
         return e, l, u, s
 
     # Ready to draw
@@ -91,13 +95,13 @@ def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CL
     elm.append({'data': {'source': 'ri0',
                          'target': 'ri1',
                          'firstname': 'covRI',
-                         'label': '%.2f' % extr_est('covRI')[0]}
+                         'label': '%.2f\n[%.2f; %.2f]' % (extr_est('covRI')[0:3])}
                 })
 
     for i in range(1, nt + 1):
 
         elm.append({'data': {'source': f'imp_dep{i}', 'target': f'imp_cmr{i}', 'firstname': 'imp_cov',
-                             'label': '%.2f' % extr_est(f'cor{i}')[0]}})
+                             'label': '%.2f\n[%.2f; %.2f]' % extr_est(f'cor{i}')[0:3]}})
 
         for ri, v in enumerate(vs):
 
@@ -132,9 +136,6 @@ def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CL
             if i < nt:
                 otherv = abs(ri - 1)
                 # time adjustment
-                t1 = timedic[f'{v}{i + 1}'] - timedic[f'{v}{i}']
-                t2 = timedic[f'{v}{i + 1}'] - timedic[f'{vs[otherv]}{i}']
-
                 def calc_weight(term, vname, index):
                     if term == 'AR':
                         t = timedic[f'{vname}{index + 1}'] - timedic[f'{vname}{index}']
@@ -200,17 +201,17 @@ style_net_riclpm = [
                'control-point-distances': [-width * .45, -width * .52, -width * .53, -width * .53, -width * .45],
                'control-point-weights': [0.01, 0.20, 0.5, 0.80, 0.99],
                'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
-               'text-background-opacity': .7}},
+               'text-background-opacity': .7, 'text-wrap': 'wrap'}},
 
     {'selector': 'edge[firstname *= "imp_cov"]',
      'style': {'curve-style': 'unbundled-bezier', 'target-arrow-shape': 'vee', 'source-arrow-shape': 'vee', 'width': 1,
                'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
-               'text-background-opacity': .7}},
+               'text-background-opacity': .7, 'text-wrap': 'wrap'}},
 
     # Lambdas
     {'selector': 'edge[firstname *= "lambda"]',
      'style': {'curve-style': 'straight', 'target-arrow-shape': 'vee', 'width': 1, 'arrow-scale': .8,
-               'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'silver',
+               'label': 'data(label)', 'font-size': styles.CLPM_EDGE_LABEL, 'text-background-color': 'white',
                'text-background-opacity': .7}},
 
     # Dashed lines
