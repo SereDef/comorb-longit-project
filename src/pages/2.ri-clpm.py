@@ -10,7 +10,7 @@ from definitions.general_funcs import bold_it, badge_it, underline_it, wrap_it, 
     dep_var_checklist, cmr_var_checklist, stat_checklist, temp_plot
 
 from definitions.riclpm_funcs import \
-    read_res_riclpm, make_net_riclpm, style_net_riclpm, make_table_riclpmgit status
+    read_res_riclpm, make_net_riclpm, style_net_riclpm, make_table_riclpm
 
 register_page(__name__, path='/riclpm')
 
@@ -55,7 +55,7 @@ layout = dbc.Row([
                                                          dbc.Row(children=[
                                                             dcc.Checklist(id=ids.STAT_CHECKLIST_RICLPM,
                                                                           options= stat_checklist(disable_etas=True),
-                                                                          value=['l', 'p'],
+                                                                          value=['l'],
                                                                           style=styles.TEXT,
                                                                           inputStyle={'margin-left': styles.MARGIN_CHECKLIST,
                                                                                       'margin-right': styles.MARGIN_CHECKLIST},

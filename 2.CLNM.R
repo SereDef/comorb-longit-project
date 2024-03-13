@@ -2,7 +2,7 @@
 invisible(lapply(c('psychonetrics','qgraph','dplyr','tidyr','psych','gdata'), require, 
                  character.only = TRUE));
 
-data <- readRDS('../mats/raw_data.rds')
+data <- readRDS('./raw_data.rds')
 
 # which(sapply(data, is.character)) 
 

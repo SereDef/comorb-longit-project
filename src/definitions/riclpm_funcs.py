@@ -7,7 +7,7 @@ from definitions.general_funcs import badge_it, get_label
 
 # -- Backend ---------------------
 
-def read_res_riclpm(depname, cmrname, params='stat', sex='', path='./assets/results/mod1/'):
+def read_res_riclpm(depname, cmrname, params='free', sex='', path='./assets/results/mod1/'):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic risk (CMR)
        marker, + stationarity assumptions for long term parameters ('free' vs. 'stat').
        Open the .RData file created by Rscript 1.RICLPM (one for dep-cmr marker pair).
@@ -17,40 +17,38 @@ def read_res_riclpm(depname, cmrname, params='stat', sex='', path='./assets/resu
     """
     sexdict = {'m': '_sex_1', 'f': '_sex_2', '': ''}
 
-    std = ''  # '_std'
+    res = pyreadr.read_r(f'{path}ri_p{params}_transf/{depname}_{cmrname}{sexdict[sex]}.RData')
 
-    res = pyreadr.read_r(f'{path}ri_p{params}{std}/{depname}_{cmrname}{sexdict[sex]}.RData')
-
-    cors = res['c']
     fitm = res['fit_meas'].T
 
     esti = res['estimates']
 
+    # Make covariance easier to query
+    esti['label'].replace({'rcov': 'cor'}, regex=True, inplace=True)
+
     # Add standardized estimates
-    if std != '':
+    if params == 'free':
+        esti[['u_est', 'u_ci.lower', 'u_ci.upper', 'u_pvalue']] = esti[['est', 'ci.lower', 'ci.upper', 'pvalue']]
         esti[['est', 'ci.lower', 'ci.upper', 'pvalue']] = res['stad_esti']
-    else:
-        # Make covariance easier to query
-        esti['label'].replace({'rcov': 'cor'}, regex=True, inplace=True)
 
     esti['sign'] = [0 if p > 0.05 else 1 for p in esti['pvalue']]
     # [0 if low <= 0 <= upp else 1 for low, upp in zip(esti['ci.lower'], esti['ci.upper'])]
     # based on CI because pvalue is sometimes NA
 
-    return fitm, esti, cors
+    cors = res['c']
+    summ = res['dat_summ']
+
+    return fitm, esti, summ, cors
 
 
-def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CLPM_WIDTH):
+def make_net_riclpm(depname, cmrname, params='free', sex='', net_width=styles.CLPM_WIDTH):
     """Input: names of the depression report (sDEP = self or mDEP = parental reports) and cardio-metabolic
        risk (CMR) marker; model stationarity and size of the graph.
        Creates a list of dictionaries to use as input for the elements arg of cytoscape graph.
        This only creates the core structure, style parameters are defined in style_sheet1.
     """
     # read data
-    _, esti, cor = read_res_riclpm(depname, cmrname, params, sex)
-
-    # load summary dataframe
-    summ = pyreadr.read_r(f'./assets/results/mod1/g_lstat_pstat/{depname}_{cmrname}.RData')['dat_summ']
+    esti, summ = read_res_riclpm(depname, cmrname, params, sex)[1:3]
 
     # Extract the estimated parameters from the result files (returns estimates and significance [= '*' or '']
     def extr_est(name):
@@ -143,7 +141,7 @@ def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CL
                         t = timedic[f'{vname}{index + 1}'] - timedic[f'{vs[otherv]}{index}']
 
                     if params == 'free':
-                        t = 1 / t  # divide by time if not stationary
+                        t = 1  #/ t  # divide by time if not stationary
 
                     weight = '%.2f\n[%.2f; %.2f]' % (extr_est(f'{term}_{vname}{index}')[0] * t,
                                                      extr_est(f'{term}_{vname}{index}')[1] * t,
@@ -154,13 +152,13 @@ def make_net_riclpm(depname, cmrname, params='stat', sex='', net_width=styles.CL
                 elm.extend([{'data': {'source': f'imp_{v}{i}', 'target': f'imp_{v}{i + 1}',
                                       'weight': calc_weight('AR', v, i),
                                       'sign': extr_est(f'AR_{v}{i}')[3],
-                                      'label': f'AR{i}',
+                                      'label': f'AR_{v}{i}',
                                       'firstname': 'direct'}},
 
                             {'data': {'source': f'imp_{vs[otherv]}{i}', 'target': f'imp_{v}{i + 1}',
                                       'weight': calc_weight('CL', v, i),
                                       'sign': extr_est(f'CL_{v}{i}')[3],
-                                      'label': f'CL{i}',
+                                      'label': f'CL_{v}{i}',
                                       'firstname': 'direct'}}
                             ])
 
@@ -219,8 +217,10 @@ style_net_riclpm = [
     # {'selector':'edge[sign < 1]', 'style':{'line-style':'dashed'}},
 ]
 # Set the color of each edge type and the distance between source and label displaying its weight (to avoid overlapping)
-d = {'AR': ['red', styles.CLPM_WIDTH/14],
-     'CL': ['green', styles.CLPM_WIDTH/14]}
+d = {'AR_cmr': ['red', styles.CLPM_WIDTH/14],
+     'AR_dep': ['blue', styles.CLPM_WIDTH/14],
+     'CL_cmr': ['purple', styles.CLPM_WIDTH/14],
+     'CL_dep': ['orange', styles.CLPM_WIDTH/14]}
 
 for c in d.keys():
     style_net_riclpm.extend([{'selector': f'[label *= "{c}"][sign > 0]',

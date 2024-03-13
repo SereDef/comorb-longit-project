@@ -12,8 +12,11 @@ data <- load_alspac(# volumes[...] (EarlyCause/WP3/SD/Data)
                     load.metadata = FALSE)
 
 # Initiate dataframe and set up unique child ID
-dset <- data.frame('IDC' = make_idc(mom.id='cidb4195'),
-                   'sex' = data$kz021) # Male, Female
+dset <- data.frame('IDC' = make_idc(mom.id='cidb2957'),
+                   'sex' = data$kz021, # Male, Female
+              'ethnicity'= as.factor(ifelse( # Child ethnic background
+                data$c804=='White','White', ifelse(data$c804=='Non-white','Non-white',NA)))
+)
 
 # ==============================================================================
 # -------------------------------- Functions -----------------------------------
@@ -116,16 +119,17 @@ extr_cmr <- function(df, age){
     select(names(df)) %>%
     
     mutate(across(everything(), function(x) { 
+      if (!is.numeric(x)) {
       # Drop empty levels
       droplevels(x)
       # Transform to numeric
       x <- suppressWarnings(as.numeric(levels(x))[x])
+      }
+      return(x)
     }))
   
   # rename them
   names(cmr) <- df
-  
-  browser()
   
   # Remove outliers
   except = which(names(cmr) %in% c('insulin','glucose','triglyc','CRP','IL_6','canabis'))
@@ -205,7 +209,7 @@ extr_pub <- function(age, scale=12){
 # 2 Had fun; 8 Felt happy; 11 Enjoyed doing lots of things; 17 Had a good time; 18 Laughed a lot; 
 # 19 Looked forward to the day ahead; 20 Felt really positive about the future; 21 Felt valued; 22 Felt unhappy
 
-pdf('histogr_data.pdf') # Note: saved in working directory :) 
+# pdf('histogr_data.pdf') # Note: saved in working directory :) 
 # ------------------------------------------------------------------------------
 mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') 
 
@@ -250,10 +254,13 @@ mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a')
 cmr_09.6y <- extr_cmr(data.frame('pub203'='height'), # cm (parent-reported) # 'pub204'='weight'), # kg (parent-reported)
                       age = 'pub295')
 
+data[,c('f9_weight1','f9_weight2','f9_waist_circ','f9_hip_circ')] <- sapply(
+  data[,c('f9dx010','f9ms057','f9ms018','f9ms020')], function(x) as.numeric(levels(x))[x] )
+
 # Combine two weight measure (from two DXA visits)
-data[,'f9_weight'] <- rowMeans(data[,c('f9dx010','f9ms057')], na.rm=T) ### ONLY DXA f9dx010 in AFAR
+data[,'f9_weight'] <- rowMeans(data[,c('f9_weight1','f9_weight2')], na.rm=T) ### ONLY DXA f9dx010 in AFAR
 # Calculate waist to hip ratio
-data[,'f9_whr'] <- data[,'f9ms018'] / data[,'f9ms020'] # Hip circumference (cm) ### NOT in AFAR
+data[,'f9_whr'] <- data[,'f9_waist_circ'] / data[,'f9_hip_circ'] # Hip circumference (cm) ### NOT in AFAR
 
 cmr_09.8y <- extr_cmr(data.frame('f9_weight'='weight', # kg (DXA)
                                    'f9ms018'='waist_circ', # cm      ### NOT in AFAR
@@ -325,8 +332,12 @@ cmr_10.6y <- extr_cmr(data.frame('fdms018'='waist_circ', # cm
 # ------------------------------------------------------------------------------
 mdep_11.7y <- extr_dep('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
 
+data[,c('fems_waist_circ','fems_hip_circ')] <- sapply(
+  data[,c('fems018','fems020')], function(x) as.numeric(levels(x))[x] )
+
 # Calculate waist to hip ratio
-data$fems_whr <- data[,'fems018'] / data[,'fems020'] # Hip circumference (cm)
+data$fems_whr <- data[,'fems_waist_circ'] / data[,'fems_hip_circ']
+
 cmr_11.7y <- extr_cmr(data.frame( 'pub403'='height', # cm (parent-reported) # Note: age slightly different ('pub497a')
                                  'fedx016'='weight', # kg --> 'pub404'='weight', # kg (parent-reported)
                                  'fems018'='waist_circ', # cm 
@@ -454,32 +465,32 @@ cmr_17.0y <- extr_cmr(data.frame('pub903'='height',  # cm (parent-reported)
 # ------------------------------------------------------------------------------
 dep_17.8y <- extr_dep('ccxd9', 0:15, remove=c(2,8,11), age = 'ccxd006') # (05 in years), CCXD917 total score
 
-# Combine some three BP measurements
-(names(data)[grep(pref, names(data))])$fjel_sbp <- rowMeans(data[,c('fjel036','fjel040')], na.rm=T) # excluding first measurement 'fjel032'
-data$fjel_dbp <- rowMeans(data[,c('fjel037','fjel041')], na.rm=T) # excluding first measurement 'fjel033'
-
-# Calculate cardiac measurements: 
-# Left ventricular mass (LVM) (g) = 0.8⋅[1.04⋅((LVEDD + IVSd + PWd)^3 − LVEDD^3)] + 0.6, where:
-# LVEDD – LV end-diastolic dimension, given in centimeters (cm);
-# IVSd – Interventricular septal end-diastole, given in centimeters (cm);
-# PWd – Posterior wall thickness at end-diastole, given in centimeters (cm); and
-# 1.04 – Heart muscle density in g/cm³.
-data$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
-                                                'fjgr031',  # Average interventricular septum in diastole (cm)
-                                                'fjgr053')] # Average posterior wall thickness in diastole (cm)
-                                     )^3 - data[,'fjgr043']^3 ) ) + 0.6
-
-# Relative wall thickness (RWT), defined as 2 times posterior wall thickness divided by the LV diastolic diameter
-data$fjgr_RWT <- 2 * data[,'fjgr053'] / data[,'fjgr043']
-# Ejection fraction (%) is estimated by fractional shortening (%), calculated using Teichholz's formula:
-# FS = (LV end-diastolic dimension – LV end-systolic dimension) / LV end-diastolic dimension
-# fjgr047 = Average left ventricular internal diameter during systole (cm)
-data$fjgr_FS <- (data[,'fjgr043'] - data[,'fjgr047']) / data[,'fjgr043'] * 100
-
-# cigarette smoking 
-data$fjsm_tot <- data[,'fjsm500'] # weekly number of cigarettes 
-data$fjsm_tot[is.na(data$fjsm_tot) & (data[,'fjsm350']==2 & data[,'fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
-data$fjsm_tot[is.na(data$fjsm_tot)] <- data[is.na(data$fjsm_tot), 'fjsm400']*7 # daily cigarettes present but weekly NA
+# # Combine some three BP measurements
+# data$fjel_sbp <- rowMeans(data[,c('fjel036','fjel040')], na.rm=T) # excluding first measurement 'fjel032'
+# data$fjel_dbp <- rowMeans(data[,c('fjel037','fjel041')], na.rm=T) # excluding first measurement 'fjel033'
+# 
+# # Calculate cardiac measurements: 
+# # Left ventricular mass (LVM) (g) = 0.8⋅[1.04⋅((LVEDD + IVSd + PWd)^3 − LVEDD^3)] + 0.6, where:
+# # LVEDD – LV end-diastolic dimension, given in centimeters (cm);
+# # IVSd – Interventricular septal end-diastole, given in centimeters (cm);
+# # PWd – Posterior wall thickness at end-diastole, given in centimeters (cm); and
+# # 1.04 – Heart muscle density in g/cm³.
+# data$fjgr_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fjgr043',  # Average left ventricular internal diameter during diastole (cm)
+#                                                 'fjgr031',  # Average interventricular septum in diastole (cm)
+#                                                 'fjgr053')] # Average posterior wall thickness in diastole (cm)
+#                                      )^3 - data[,'fjgr043']^3 ) ) + 0.6
+# 
+# # Relative wall thickness (RWT), defined as 2 times posterior wall thickness divided by the LV diastolic diameter
+# data$fjgr_RWT <- 2 * data[,'fjgr053'] / data[,'fjgr043']
+# # Ejection fraction (%) is estimated by fractional shortening (%), calculated using Teichholz's formula:
+# # FS = (LV end-diastolic dimension – LV end-systolic dimension) / LV end-diastolic dimension
+# # fjgr047 = Average left ventricular internal diameter during systole (cm)
+# data$fjgr_FS <- (data[,'fjgr043'] - data[,'fjgr047']) / data[,'fjgr043'] * 100
+# 
+# # cigarette smoking 
+# data$fjsm_tot <- data[,'fjsm500'] # weekly number of cigarettes 
+# data$fjsm_tot[is.na(data$fjsm_tot) & (data[,'fjsm350']==2 & data[,'fjsm450']==2)] <- 0 # smokes every day = no & smokes every week = no
+# data$fjsm_tot[is.na(data$fjsm_tot)] <- data[is.na(data$fjsm_tot), 'fjsm400']*7 # daily cigarettes present but weekly NA
 
 cmr_17.8y <- extr_cmr(data.frame('fjmr020'='height', # cm
                               'fjmr022'='weight', # kg
@@ -489,17 +500,17 @@ cmr_17.8y <- extr_cmr(data.frame('fjmr020'='height', # cm
                               'fjdx138'='android_fatmass',# grams (--> transformed later)
                             # 'fjli100'='liver_fat', # only binary (0,1) with 43 cases
                                        # arteries
-                             'fjel_sbp'='SBP', # Omron BP (seated after 5min rest)
-                             'fjel_dbp'='DBP', # Omron BP (seated after 5min rest)
+                             # 'fjel_sbp'='SBP', # Omron BP (seated after 5min rest)
+                             # 'fjel_dbp'='DBP', # Omron BP (seated after 5min rest)
                              'fjar079d'='IMT', # Baseline (end diastole) intima-media thickness (mm)
                              'fjar083d'='PWV', # carotid to femoral (m/s) average
                            # 'fjar088d'='crPWV', # carotid to radial (m/s) average
                            # 'fjel115'='eject_dur', # Ejection Duration, ms (? --> from radial artery tonometry )
                                        # heart 
                               'fjel116'='heart_rate',
-                             'fjgr_LVM'='LVM', # Left ventricular mass (LVM) (g)
-                             'fjgr_RWT'='RWT', # Relative wall thickness (RWT) (cm)
-                              'fjgr_FS'='FS',  # Fractional shortening (%)
+                             # 'fjgr_LVM'='LVM', # Left ventricular mass (LVM) (g)
+                             # 'fjgr_RWT'='RWT', # Relative wall thickness (RWT) (cm)
+                             #  'fjgr_FS'='FS',  # Fractional shortening (%)
                               #'fjgr039'='LAS',  # Average left atrial size, m-mode (cm)
                               #'fjgr043'='LVIDD',# Average left ventricular internal diameter during diastole (cm)
                              # assuming the age is the same here 
@@ -513,7 +524,7 @@ cmr_17.8y <- extr_cmr(data.frame('fjmr020'='height', # cm
                               'crp_tf4'='CRP', 
                                      # other
                              'fjal4000'='alcohol', # Alcohol use disorder identification test (AUDIT) score
-                             'fjsm_tot'='smoking', # Average number of cigarettes per week
+                           #   'fjsm_tot'='smoking', # Average number of cigarettes per week
                              'fjdr4500'='canabis'),# Cannabis Abuse Screening Test (CAST) score
                    age = 'fj003a') # (b in years)
 
@@ -587,25 +598,29 @@ dep_23.8y <- extr_dep('ypc16', 50:67, remove=c(3,8,12,15,17), age = 'ypc2650')
 # MISSING other depression items  + eating , smoking 
 # ------------------------------------------------------------------------------
 
+data[,c('fkcv_imt1','fkcv_imt2','fkms_height','fkms_waist_circ','fkms_hip_circ')] <- sapply(
+  data[,c('fkcv1131','fkcv2131','fkms1000','fkms1052','fkms1062')], function(x) as.numeric(levels(x))[x] )
+
+
 # Combine left and right mean IMT measurements (also min and ax available)
-data$fkcv_imt <- rowMeans(data[,c('fkcv1131','fkcv2131')], na.rm=T)
+data$fkcv_imt <- rowMeans(data[,c('fkcv_imt1','fkcv_imt2')], na.rm=T)
 # 24.5 anthropometry needs to be recoded into cm
-data$fkms_height    <- data[,'fkms1000']/10
-data$fkms_waistcirc <- data[,'fkms1052']/10
+data$fkms_height    <- data[,'fkms_height']/10
+data$fkms_waist_circ <- data[,'fkms_waist_circ']/10
 # Calculate waist to hip ratio
-data$fkms_whr <- data[,'fkms_waistcirc'] / (data[,'fkms1062']/10) # Hip circumference (trans in cm)
+data$fkms_whr <- data[,'fkms_waist_circ'] / (data[,'fkms_hip_circ']/10) # Hip circumference (trans in cm)
 
 # Calculate cardiac measurements (see formulas above)
-data$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
-                                                'fkec5050',  # Average thinkness LV interventricular septum in diastole (cm)
-                                                'fkec5180')] # Average LV posterior wall Diastolic thickness (cm)
-                                         )^3 - data[,'fjgr043']^3 ) ) + 0.6
-data$fkec_RWT <- 2 * data[,'fkec5180'] / data[,'fkec5080']
-data$fkec_FS <- abs( (data[,'fkec5080'] - data[,'fkec5090']) / data[,'fkec5080'] * 100 ) 
+# data$fkec_LVM = 0.8 * ( 1.04 * ( rowSums(data[,c('fkec5080',  # Average LV internal End Diastolic Dimension (cm)
+#                                                 'fkec5050',  # Average thinkness LV interventricular septum in diastole (cm)
+#                                                 'fkec5180')] # Average LV posterior wall Diastolic thickness (cm)
+#                                          )^3 - data[,'fjgr043']^3 ) ) + 0.6
+# data$fkec_RWT <- 2 * data[,'fkec5180'] / data[,'fkec5080']
+# data$fkec_FS <- abs( (data[,'fkec5080'] - data[,'fkec5090']) / data[,'fkec5080'] * 100 ) 
 
 cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
-                                 'fkms1030'='weight',    # kg
-                           'fkms_waistcirc'='waist_circ',# cm
+                                    'fkms1030'='weight',    # kg
+                             'fkms_waist_circ'='waist_circ',# cm
                               'fkms_whr'='waist_hip_ratio',  # cm
                               'fkdx1001'='total_fatmass',  # grams (--> transformed later)
                               'fkdx1002'='total_leanmass', # grams (--> transformed later)
@@ -620,9 +635,9 @@ cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
                             # 'fksp1804'='eject_dur', # Ejection Duration, ms
                                         # heart 
                               'fksp1837'='heart_rate',
-                              'fkec_LVM'='LVM', # Left ventricular mass (LVM) (g)
-                              'fkec_RWT'='RWT', # Relative wall thickness (RWT) (cm)
-                               'fkec_FS'='FS',  # Fractional shortening (%)
+                              # 'fkec_LVM'='LVM', # Left ventricular mass (LVM) (g)
+                              # 'fkec_RWT'='RWT', # Relative wall thickness (RWT) (cm)
+                              #  'fkec_FS'='FS',  # Fractional shortening (%)
                                    # no Average left atrial size, m-mode (cm)
                                    # no Average left ventricular internal diameter during diastole (cm), dimention ok?
                               # assuming the age is the same here 
@@ -636,7 +651,7 @@ cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
                                'crp_f24'='CRP', 
                         # other
                         'fjal4000'='alcohol', # Alcohol use disorder identification test (AUDIT) score
-                        'fjsm_tot'='smoking', # Average number of cigarettes per week
+                       # 'fjsm_tot'='smoking', # Average number of cigarettes per week
                         'fjdr4500'='canabis'),# Cannabis Abuse Screening Test (CAST) score
                    
                    age = 'fkar0010') # (11 in years)
@@ -697,15 +712,15 @@ cmr_24.5y <- extr_cmr(data.frame('fkms_height'='height', # cm
 # ==============================================================================
 
 # Puberty stage and physical exercise
-pub_08.2y <- extr_pub(age='pub194', scale=52) # transform age in weeks to years 
-pub_09.6y <- extr_pub(age='pub295')
-pub_10.7y <- extr_pub(age='pub397a')
-pub_11.7y <- extr_pub(age='pub497a')
-pub_13.1y <- extr_pub(age='pub597a')
-pub_14.7y <- extr_pub(age='pub697a')
-pub_15.3y <- extr_pub(age='pub797a')
-pub_16.0y <- extr_pub(age='pub897a')
-pub_17.0y <- extr_pub(age='pub997a')
+# pub_08.2y <- extr_pub(age='pub194', scale=52) # transform age in weeks to years 
+# pub_09.6y <- extr_pub(age='pub295')
+# pub_10.7y <- extr_pub(age='pub397a')
+# pub_11.7y <- extr_pub(age='pub497a')
+# pub_13.1y <- extr_pub(age='pub597a')
+# pub_14.7y <- extr_pub(age='pub697a')
+# pub_15.3y <- extr_pub(age='pub797a')
+# pub_16.0y <- extr_pub(age='pub897a')
+# pub_17.0y <- extr_pub(age='pub997a')
 
 # ==============================================================================
 # Parental education (measured at 5.1 years)
@@ -733,7 +748,7 @@ parent_edu <- data.frame('m_edu' = m_edu,
 # ==============================================================================
 
 #cat(ls(), sep=", ")
-d <- cbind(d, 
+d <- cbind(dset, 
      mdep_09.6y, cmr_09.6y, cmr_09.8y, 
       dep_10.6y, cmr_10.6y, cmr_10.7y, 
      mdep_11.7y, cmr_11.7y, #_1, cmr_11.7y_2, 
@@ -748,8 +763,8 @@ d <- cbind(d,
       dep_22.9y, 
       dep_23.8y, 
       cmr_24.5y, 
-      pub_08.2y, pub_09.6y, pub_10.7y, pub_11.7y, pub_13.1y, pub_14.7y, 
-      pub_15.3y, pub_16.0y, pub_17.0y, 
+      # pub_08.2y, pub_09.6y, pub_10.7y, pub_11.7y, pub_13.1y, pub_14.7y, 
+      # pub_15.3y, pub_16.0y, pub_17.0y, 
      parent_edu)
 
 
@@ -781,4 +796,28 @@ saveRDS(d, 'raw_data.rds'); write.csv(d,'raw_data.csv')
 # write.csv(vcm, 'varcov_matrix.csv')
 write.csv(crm, 'corr_matrix.csv')
 
+dev.off()
+
+# CHECK TRANSFORMATION OF DATA =================================================
+tp <- function(var){
+  
+  make_hist <- function(v, titl=''){
+    h = hist(v, main = paste(titl, var), xlab = "Value", ylab = "Frequency")
+    
+    xfit <- seq(min(v[is.finite(v)], na.rm=TRUE), max(v[is.finite(v)], na.rm=TRUE), length = 40) 
+    yfit <- dnorm(xfit, mean = mean(v, na.rm=TRUE), sd = sd(v, na.rm=TRUE)) 
+    yfit <- yfit * diff(h$mids[1:2]) * length(v) 
+    
+    lines(xfit, yfit, col = "red", lwd = 2)
+  }
+  
+  par(mfrow = c(3, 1))
+ 
+  make_hist(d[,var])
+  make_hist(log(d[,var]), 'LOG')
+  make_hist(sqrt(d[,var]), 'SQRT')
+}
+
+pdf("histogr_data.pdf", width=6, height=8)
+for (v in names(d)) { if (is.numeric(d[,v]) & length(levels(as.factor(d[,v])))>10) tp(v) }
 dev.off()
