@@ -2,13 +2,13 @@
 # ============= 1. GENERALIZED CROSS-LAG PANEL MODEL (GCLPM) ===================
 # ==============================================================================
 
-# args = commandArgs(trailingOnly = TRUE) # provide access to a copy of the command line arguments supplied
-# 
-# if (length(args) == 0) {
-#   stop("Supply output folder name!")
-# } else {
-#   out_folder <- args[1] # e.g. 'mod1_lfree_pstat' # lambda free, parameters stationary
-# }
+args = commandArgs(trailingOnly = TRUE) # provide access to a copy of the command line arguments supplied
+
+if (length(args) == 0) {
+  stop("Supply output folder name!")
+} else {
+  out_folder <- args[1] # e.g. 'mod1_ri_pstat' # parameters stationary
+}
 
 # Set parameters
 dir.create(out_folder)
@@ -16,8 +16,13 @@ dir.create(out_folder)
 fix_lambdas = !(grepl('lfree', out_folder)) # heterogeneity allowed to vary over time 
 stationarity = !(grepl('pfree', out_folder)) # model long term effects stationary over time 
 
+# The type and scale of time constraints
+time_constraints=c('*','years')
+# Speak or quite
+verbose=FALSE
+
 # Load dependencies
-invisible(lapply(c('lavaan','tidySEM','foreach'), require, character.only = TRUE));
+invisible(lapply(c('lavaan','foreach'), require, character.only = TRUE));
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
@@ -74,32 +79,67 @@ sel <- function(var, times=NULL) {
 
 ## Create dataset and extract metadata (used in run_model)
 make_df <- function(name1, times1, name2, times2, 
-                    var1='dep',var2='cmr', verbose=TRUE) {
+                    group=NULL, # stratify sample?
+                    var1='dep',
+                    var2='cmr', 
+                    return_time_scale='years',
+                    transform=TRUE,
+                    normalize=TRUE, 
+                    verbose=TRUE) {
   
-  d1 = data[,sel(name1, times1)]; d2 = data[,sel(name2, times2)]
+  # Select the two sets of measurement
+  d1 = data[,sel(name1, times1)]
+  d2 = data[,sel(name2, times2)]
   
+  # Check input 
   if(ncol(d1)!=ncol(d2)) { message('Error: unequal number of timepoints') }
   
-  # Display characteristics of selection 
-  temp_distance <- function(times) { tds <- c()
-  for (i in 1:length(times)-1) { tds = c(tds, times[i+1]-times[i]) }
-  return(tds)
-  }
+  # save variable names and summary for dashboard output 
+  dat_summ <- cbind(do.call(cbind, lapply(d1, summary)),
+                    do.call(cbind, lapply(d2, summary)))
+  dat_summ <- rbind(dat_summ, 'n_obs'= nrow(data) - dat_summ["NA's",])
   
-  # df <- data.frame('id'= data$IDC)
-  # for (i in 1:ncol(d1)) { df[paste0(var1,i)] <- d1[,i]; df[paste0(var2,i)] <- d2[,i] }
-  # df = df[,-1]
-  
+  # Rename variables
   names(d1) <- paste0(var1,1:ncol(d1))
   names(d2) <- paste0(var2,1:ncol(d2))
   
-  df <- cbind(d1,d2)
+  df <- as.data.frame(cbind(d1,d2))
   
-  # select sample (at least one observation)
-  if (any(rowSums(is.na(df)) != ncol(df))) { message ('Removing empty rows.')}
-  samp = df[rowSums(is.na(df)) != ncol(df), ]
+  # Add strata variable(s)
+  if (!is.null(group)) df[,group] <- data[,group]
+  
+  # Subset sample (at least one observation per variable)
+  samp = df[(rowSums(!is.na(d1)) > 0) & (rowSums(!is.na(d2)) > 0), ]
+  message('Removing ', nrow(df)-nrow(samp),' rows with insufficient data.')
+  
+  # Data summary after subsetting
+  dat_summ_samp <- do.call(cbind, lapply(samp, summary))
+  dat_summ_samp <- rbind(dat_summ_samp, 'n_obs'= nrow(samp) - dat_summ_samp["NA's",])
+  
+  dat_summ <- round(cbind(dat_summ, dat_summ_samp),2)
+  
+  # Correlations
+  corrs = round(cor(samp[,c(names(d1), names(d2))], use='pairwise.complete.obs', method='pearson'), 2)
+  
+  if (transform) {
+    # Square root for depression and log for CMR
+    samp[,names(d1)] <- sapply(samp[,names(d1)], sqrt) 
+    samp[,names(d2)] <- sapply(samp[,names(d2)], log1p) # note: avoid -Inf values in case of 0s
+  }
+  
+  # Normalize data 
+  if (normalize) { 
+    minmax_norm <- function(x, ...) { return( (x - min(x,...)) / (max(x,...) - min(x,...)) )}
+    samp[,c(names(d1), names(d2))] <- sapply(samp[,c(names(d1), names(d2))], minmax_norm, na.rm = TRUE) 
+  }
   
   if (verbose) {
+    # Display characteristics of selection 
+    temp_distance <- function(times) { 
+      tds <- c()
+      for (i in 1:length(times)-1) tds = c(tds, times[i+1]-times[i])
+      return(tds)
+    }
     # Display temporal structure
     cat('Distance between constructs:', abs(times1-times2), sep='\t')
     cat('\nDepression, temporal gap:', temp_distance(times1), sep='\t')
@@ -107,29 +147,43 @@ make_df <- function(name1, times1, name2, times2,
     
     # Display correlation
     message('\nCorrelations:')
-    c = cor(df, use='pairwise.complete.obs', method='spearman')
-    print(round(c,2))
+    print(corrs)
     
     # Display sample size
-    message('Sample size: ', nrow(samp))
+    message('\nSample size: ', nrow(samp))
   }
   
-  # output <- list("data" = samp, 
-  #            "dep_time" = temp_distance(times1), 
-  #            "cmr_time" = temp_distance(times2) )
+  # Finally, add age at measurement
+  if (return_time_scale=='years') { 
+    scale <- 1; fdigit <- 1
+  } else if (return_time_scale=='months') { 
+    scale <- 12; fdigit <- 0
+  }
+  age_vars1 <- data[,sel(paste0(toupper(var1),'_age'), times1)] * scale
+  age_vars2 <- data[,sel(paste0(toupper(var2),'_age'), times2)] * scale 
   
-  return(samp)
+  med_ages1 <- unname(round(sapply(age_vars1, median, na.rm=TRUE), fdigit))
+  med_ages2 <- unname(round(sapply(age_vars2, median, na.rm=TRUE), fdigit))
+  
+  return(list('sample'=samp, 'corrs'=corrs, 'summary'=dat_summ,
+              'med_ages1'=med_ages1, 'med_ages2'=med_ages2))
 }
 
 ## Specify the formula for the model (used in run_sem)
-gclpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c(), c()), 
-                         mod='full', fix_lambdas=FALSE, stationarity=FALSE) {
+gclpm_formula <- function(var1='dep', var2='cmr', 
+                          n_ocs=NULL, meas_time=list(c(), c()), 
+                          mod='full', 
+                          rel='*', # specify temporal equality using power ('^') or linear ('*') relations 
+                          strata=c(),
+                          stationarity=FALSE,
+                          fix_lambdas=FALSE, 
+                          verbose=TRUE) {
+    
+  # Check input ----------------------------------------------------------------
+  if (is.null(n_ocs) & (length(meas_time[[1]])==0 | length(meas_time[[1]])==0)) { 
+    stop('Provide total number of occasions or time points of measurement!') }
   
-  # Input check ----------------------------------------------------------------
-  if (is.null(n_ocs) & length(meas_time[[1]])==0) { # user did not provide number or timepoints
-    stop('Provide number of occasions or time points of measurement!') }
-  
-  if (length(meas_time[[1]]) != length(meas_time[[2]])) { # contraddictory info 
+  if (length(meas_time[[1]]) != length(meas_time[[2]])) {
     stop('You need the same number of time points for each of the two variables.') }
   
   if (!is.null(n_ocs) & !length(meas_time[[1]]) %in% c(0, n_ocs)) { # contraddictory info 
@@ -137,13 +191,14 @@ gclpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c()
   
   # ----------------------------------------------------------------------------
   # How many occasions 
-  if (length(meas_time[[1]])>0) { 
-    temp_var1 = meas_time[[1]]
-    temp_var2 = meas_time[[2]] 
-    
-  } else { temp_var1 = temp_var2 = rep(1, n_ocs) }
+  if (length(meas_time[[1]]) > 0) { 
+    temp_var1 <- meas_time[[1]]
+    temp_var2 <- meas_time[[2]] 
+  } else { 
+    temp_var1 <- temp_var2 = 1:n_ocs 
+  }
   
-  if (is.null(n_ocs)) { n_ocs = length(temp_var1) }
+  if (is.null(n_ocs)) n_ocs <- length(temp_var1)
   
   # Define model structure according to mat matrix
   mat = gclpm_model_matrix(var1=var1, var2=var2)
@@ -154,15 +209,18 @@ gclpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c()
     } else { assign(gsub('lt','', varname), gsub('lt','', r)) }
   }
   
+  # Create between components (unit effects) -----------------------------------
   unit_effects = paste0('# Unit effects\n',
                         'eta_',var1,' =~ ', paste0('l',n_ocs:1,'*',var1,n_ocs:1, collapse=' + '), '\n',
                         'eta_',var2,' =~ ', paste0('l',n_ocs:1,'*',var2,n_ocs:1, collapse=' + '), '\n') 
   
+  # Create impulses (or within-person centered variables) ----------------------
   impulses = '# Impulses\n'
   for (i in 2:n_ocs) { impulses = paste0(impulses, 'u_',var1,i,' =~ ',var1,i,'\n',var1,i,' ~~ 0*',var1,i,'\n') }
   for (i in 2:n_ocs) { impulses = paste0(impulses, 'u_',var2,i,' =~ ',var2,i,'\n',var2,i,' ~~ 0*',var2,i,'\n') }
   
-  regressions = '# Regressions\n'
+  # Estimate lagged effects between within-person centered variables -----------
+  regressions <- '# Regressions\n'
   
   for (i in n_ocs:2) { 
     # assign different name to each parameter unless it was set to 0
@@ -210,23 +268,32 @@ gclpm_formula <- function(var1='dep', var2='cmr', n_ocs=NULL, meas_time=list(c()
   ar_var1_con = ar_var2_con = cl_var1_con = cl_var2_con = ''
   
   if (stationarity) {
-    rel='*' # '*'
+    
+    if (rel=='*') { prec=1 } else if (rel=='^') { prec=0 } 
+    
     for (i in 1:(n_ocs-1)) {
       for (o in c(1:(n_ocs-1))[-i]) {
         
-        ar_var1_con = paste0(ar_var1_con, 'AR_',var1,i,rel,temp_var1[i+1]-temp_var1[i],' == AR_',var1,o,rel,temp_var1[o+1]-temp_var1[o],'\n')
-        ar_var2_con = paste0(ar_var2_con, 'AR_',var2,i,rel,temp_var2[i+1]-temp_var2[i],' == AR_',var2,o,rel,temp_var2[o+1]-temp_var2[o],'\n')
+        ar_var1_con = paste0(ar_var1_con, 'AR_',var1,i,rel,round(temp_var1[i+1]-temp_var1[i],prec),
+                             ' == AR_',var1,o,rel,round(temp_var1[o+1]-temp_var1[o],prec),'\n')
+        ar_var2_con = paste0(ar_var2_con, 'AR_',var2,i,rel,round(temp_var2[i+1]-temp_var2[i],prec),
+                             ' == AR_',var2,o,rel,round(temp_var2[o+1]-temp_var2[o],prec),'\n')
         
-        if (cl_var1!=0) { cl_var1_con = paste0(cl_var1_con, 'CL_',var1,i,rel,round(temp_var1[i+1]-temp_var2[i],1),
-                                             ' == CL_',var1,o,rel,round(temp_var1[o+1]-temp_var2[o],1),'\n') }
-        if (cl_var2!=0) { cl_var2_con = paste0(cl_var2_con, 'CL_',var2,i,rel,round(temp_var2[i+1]-temp_var1[i],1),
-                                             ' == CL_',var2,o,rel,round(temp_var2[o+1]-temp_var1[o],1),'\n') }
+        if (cl_var1!=0) { cl_var1_con = paste0(cl_var1_con, 'CL_',var1,i,rel,round(temp_var1[i+1]-temp_var2[i],prec),
+                                             ' == CL_',var1,o,rel,round(temp_var1[o+1]-temp_var2[o],prec),'\n') }
+        if (cl_var2!=0) { cl_var2_con = paste0(cl_var2_con, 'CL_',var2,i,rel,round(temp_var2[i+1]-temp_var1[i],prec),
+                                             ' == CL_',var2,o,rel,round(temp_var2[o+1]-temp_var1[o],prec),'\n') }
       }
       
     }
     constraints = paste0(constraints, ar_var1_con, ar_var2_con, cl_var1_con, cl_var2_con)
   }
+  
+  # Paste everything together 
   f = paste0(unit_effects, impulses, regressions, comevement, restrictions, constraints)
+  
+  if (verbose) { message('MODEL SYNTAX:'); cat(f) }
+  
   return(f)
 }
 
@@ -254,21 +321,26 @@ save_semgraph <- function(model, n_ocs, name) {
 }
 
 ## Fit a single SEM model (used in run_all_models)
-run_sem <- function(mod, data, temp1, temp2, name1, name2, 
-                    normalize=TRUE, plot_semgraph=FALSE) {
-  cat('- ', which(names(mat)==mod), mod)
+run_sem <- function(mod, data, times, name1, name2, plot_semgraph=FALSE) {
   
-  if (normalize) { 
-    minmax_norm <- function(x, ...) { return( (x - min(x,...)) / (max(x,...) - min(x,...)) )}
-    data <- sapply(data, minmax_norm, na.rm = TRUE) 
-  }
+  cat('- ', which(names(mat)==mod), mod)
   
   # Run model
   set.seed(310896)
-  m <- lavaan::sem(gclpm_formula(meas_time=list(temp1, temp2), mod=mod, 
-                                stationarity=stationarity, fix_lambdas=fix_lambdas), 
-                   data, missing='fiml', se ='robust',
-                   verbose=FALSE)
+  
+  m <- lavaan::lavaan(gclpm_formula(meas_time = times, mod=mod,
+                                    rel=time_constraints[1],
+                                    stationarity = stationarity,
+                                    fix_lambdas=fix_lambdas,
+                                    # strata=group_levels,
+                                    verbose=verbose),
+                      data = data, 
+                      se = 'robust',
+                      missing = 'fiml', 
+                      fixed.x = FALSE)
+                      # group = group, 
+                      # meanstructure = TRUE
+                      # int.ov.free = TRUE
   
   if (lavInspect(m, "converged")){
     if (plot_semgraph) {
@@ -283,34 +355,46 @@ run_sem <- function(mod, data, temp1, temp2, name1, name2,
 }
 
 ## Run the 64 SEM models in parallel :)
-run_all_models <- function(name1, times1, name2, times2, which_models=names(mat), 
-                           verbose=FALSE){
-  # Make dataframe
-  d <- make_df(name1, times1, name2, times2, verbose=verbose)
-  if (verbose) { print(summary(d)) }
+run_all_models <- function(param, which_models=names(mat), 
+                           transform=TRUE,
+                           normalize=TRUE,
+                           verbose=verbose){
+  
+  cat('\n------------------------------------------------------\n', 
+      param[[1]],' ~ ',param[[3]],
+      '\n------------------------------------------------------\n')
+  
+  dc <- make_df(param[[1]], param[[2]], param[[3]], param[[4]], 
+                # group = group,
+                transform=transform,
+                normalize=normalize, 
+                return_time_scale=time_constraints[2],
+                verbose=verbose)
+  
+  times <- dc[c('med_ages1','med_ages2')]
+  print(times)
   
   # save variable names and summary for dashboard output 
-  dep_summ <- do.call(cbind, lapply(data[,sel(name1, times1)], summary))
-  cmr_summ <- do.call(cbind, lapply(data[,sel(name2, times2)], summary))
-  dat_summ <- cbind(dep_summ, cmr_summ) 
-  dat_summ <- rbind(dat_summ, 'N_obs'= nrow(data) - dat_summ["NA's",])
+  correrations <- dc$corrs
+  data_summary <- dc$summary
   
-  cat('\n------------------------------------------------------\n',name2,' ~ ',name1)
-  cat('\n------------------------------------------------------\nFitting the models...')
+  set.seed(310896)
   
-  # stat_seq <- c(T, rep(F, 2)) # ncol(mat)-1)) # Stationary is true in the full models but false in all others
+  start <- Sys.time(); cat(' started at: ', as.character(start), '\n\n') 
   
   # Run this bitch (in parallel)
-  start <- Sys.time(); cat(' started at: ', as.character(start), '\n') 
   fits <- mapply(run_sem, mod=which_models, # parallel::mc
-                 MoreArgs=list(data=d, temp1=times1, temp2=times2, name1=name1, name2=name2), 
+                 MoreArgs=list(data=dc$data, 
+                               times=times, 
+                               name1=param[[1]], name2=param[[3]]), 
                  SIMPLIFY=FALSE) # mc.cores=12)
   end <- Sys.time()
   
-  cat('\nDone! Runtime: ',round(end - start, 2),' hours\n------------------------------------------------------\n')
+  cat('\nDone! Runtime: ', difftime(end, start, units = 'mins'),
+      'mins\n------------------------------------------------------\n')
   
   # Initialize output dataframes
-  fit_meas = data.frame(matrix(nrow = 55, ncol = 0)); estimates = data.frame(); failed = data.frame()
+  fit_measures = data.frame(matrix(nrow = 55, ncol = 0)); estimates = data.frame(); failed = data.frame()
   
   for (f in names(fits)){
     if( is.character(fits[[f]]) ) {
@@ -319,16 +403,19 @@ run_all_models <- function(name1, times1, name2, times2, which_models=names(mat)
       failed <- rbind(failed, problem)           
     } else { 
       # Inspect # print(lavaan::summary(fits[[f]]))
+      
       # Fit measures
       fm <- as.data.frame(lavaan::fitmeasures(fits[[f]])); names(fm) <- f
-      fit_meas <- cbind(fit_meas, fm) # cat('\nFit measures:', fit_meas)
+      fit_measures <- cbind(fit_measures, fm)
       # Parameters
-      # stad_est = lavaan::standardizedSolution(mfit, type="std.all")[,'est.std'] # same but standardized
-      es <- lavaan::parameterEstimates(fits[[f]])
-      estimates <- rbind(estimates, cbind(rep(f, nrow(es)), es))    
+      estimates_un <- lavaan::parameterEstimates(fits[[f]]) # unstandardized estimates
+      standardized <- lavaan::standardizedSolution(fits[[f]], type="std.all")[,c('est.std','ci.lower','ci.upper','pvalue')] # same but standardized
+      
+      estimates <- rbind(estimates, cbind(rep(f, nrow(estimates_un)), estimates_un, standardized)) 
     } 
   }
-  save(dat_summ, fit_meas, estimates, failed, file = paste0(out_folder,'/',substr(name1,1,4),'_',name2,'.RData'))
+  save(fit_measures, estimates, failed, correrations, data_summary, times,
+       file = paste0(out_folder,'/',substr(param[[1]],1,4),'_',param[[3]],'.RData'))
   
   # return(fits)
 }
@@ -339,20 +426,20 @@ run_all_models <- function(name1, times1, name2, times2, which_models=names(mat)
 
 models <- list(
   # Self-reported depression ===================================================
-  # – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
-  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-       'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)), # there is 17 too
-
   # - total fat mass/ FMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
   list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
        'FMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
 
-  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
-    'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
-  
   # - total lean mass/ LMI : 10/11 – 12/13 – 14 – 15½ / 16½ - 18 – 24
   list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
        'LMI',        c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
+  
+  # – BMI: 10 – 13 – 14 – 16 - 18 - 24 # (with mean BMI 15.5 – 18)?
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+       'BMI',        c(10.7, 12.8, 13.8, 16,   17.8, 24.5)), # there is 17 too
+
+  list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
+    'total_fatmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
   
   list('sDEP_score', c(10.6, 12.8, 13.8, 16.6, 17.8, 23.8),
    'total_leanmass', c( 9.8, 11.8, 13.8, 15.4, 17.8, 24.5)),
@@ -386,21 +473,21 @@ models <- list(
   
   # Blood pressure, PWV and heart rate and glucose have three occasions...
   
-  # Mother reported ==============================================================
+  # Mother reported ============================================================
+  # – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18)
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'FMI',        c(9.8, 11.8, 13.8, 17.8)),
+  
+  # – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
+  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
+       'LMI',        c(9.8, 11.8, 13.8, 17.8)),
+  
   # – BMI: 10 – 12 – 13 – 16  # (with mean BMI 15.5 – 18) 
   list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
        'BMI',        c(9.8, 11.8, 12.8, 16)), # there is 17 too but lower correlation (0.2 vs. 0.4)
 
-  # – total fat mass/ FMI : 10 – 12 – 13.5 – 17.5 (or with mean fm 15.5 – 18)
-  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-       'FMI',        c(9.8, 11.8, 13.8, 17.8)),
-
   list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
     'total_fatmass', c(9.8, 11.8, 13.8, 17.8)),
-
-  # – total lean mass/ LMI : 10 – 12 – 13.5 – 17.5 (or with mean lm 15.5 – 18)
-  list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
-       'LMI',        c(9.8, 11.8, 13.8, 17.8)),
 
   list('mDEP_score', c(9.6, 11.7, 13.1, 16.7),
    'total_leanmass', c(9.8, 11.8, 13.8, 17.8)),
@@ -411,6 +498,7 @@ models <- list(
 )
 
 # parallel::detectCores()
+
 
 # Run each depression / CMR marker combination in parallel =====================
 foreach(i=1:length(models)) %dopar% {

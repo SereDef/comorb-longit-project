@@ -13,25 +13,51 @@ data <- load_alspac(# volumes[...] (EarlyCause/WP3/SD/Data)
 
 # Initiate dataframe and set up unique child ID
 dset <- data.frame('IDC' = make_idc(mom.id='cidb2957'),
-                   'sex' = data$kz021, # Male, Female
-              'ethnicity'= as.factor(ifelse( # Child ethnic background
-                data$c804=='White','White', ifelse(data$c804=='Non-white','Non-white',NA)))
-)
+                   'sex' = data$kz021, # Participant sex (Male, Female)
+                   'ethnicity'= data$c804)  # Child ethnic background (White, Non-white)
+
+# kw9500 Cultural background of child 11.67 years [11.42 - 13.83]
+# 
+#                               Other White Mixed Asian Black Other_duplicated_5 Don't know <NA>
+#   Consent withdrawn by mother     0     8     0     0     0                  0          0    4
+#   White                           0  6482    19     0     0                  2          0 3924
+#   Non-white                       0    28   171    17    15                  6          0  248
+#   <NA>                            0   585    28     9     2                  3          0 4094
 
 # ==============================================================================
 # -------------------------------- Functions -----------------------------------
+# ==============================================================================
 
-# Find variables in the dataset
-# f <- function(pref) { print(sort(names(data)[grep(pref, names(data))]))}
+to_numeric <- function(vars) {
+  data[,vars] <<- sapply(data[,vars], function(x) { 
+    if (!is.numeric(x)) as.numeric(levels(x))[x] else x 
+  })
+}
+
+winsorize <- function(x, xmin=min(x, na.rm=TRUE), xmax=max(x, na.rm=TRUE)) {
+  message('Original min and max values: ', min(x, na.rm=TRUE), ' and ', max(x, na.rm=TRUE))
+  
+  xmin <- if (is.character(xmin)) quantile(x, as.numeric(xmin), na.rm=TRUE) else xmin
+  xmax <- if (is.character(xmax)) quantile(x, as.numeric(xmax), na.rm=TRUE) else xmax
+  
+  cat('Winsorising', sum(x < xmin, na.rm=TRUE), 'values below', xmin, 'and',
+      sum(x > xmax, na.rm=TRUE), 'values above', xmax,'\n\n')
+  
+  x[x < xmin] <- xmin
+  x[x > xmax] <- xmax
+  
+  hist(x)
+  print(summary(x))
+}
 
 # Extract and clean depression items
 extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
   
   # Remove positively worded items (not in SMFQ)
-  if (length(remove) > 0) { nrs = nrs[-remove] }
- 
-  n_adj <- sprintf('%02d', nrs) # add leading 0s to the number sequence
-  if(!is.null(plus)) { n_adj <- paste0(n_adj, plus) } # if necessary, add one element at the end
+  if (length(remove) > 0)  nrs <- nrs[-remove]
+  
+  # Add leading 0s to the number sequence & if necessary, add plus at the end
+  n_adj <- paste0(sprintf('%02d', nrs), plus)
   
   dep <- data %>%
     # Identify variables 
@@ -46,15 +72,15 @@ extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
       x <- case_when((grepl('Not', x, ignore.case=TRUE)) ~ 0, # e.g., 'Not true', 'Not at all' ...
                      (grepl('Sometimes', x, ignore.case=TRUE)) ~ 1, # e.g. 'Sometimes', 'Sometimes true' ...
                      (grepl('True', x, ignore.case=TRUE)) ~ 2, # e.g. 'True', '3. True' ...
-                      TRUE ~ NA)
+                     TRUE ~ NA)
     }))
-
+  
   # Rename depression items 
   names(dep) <- paste0(reporter,'DEP', sprintf('%02d', 1:13))
   
   # Check recoding ( most answers == 0 --> average should be lower than 1 )
   if (any(colMeans(dep, na.rm=TRUE) > 1)) { 
-    cat('ATTENTION: check direction of answer scoring!')
+    cat('ATTENTION: check the direction of answer scoring!')
     print(summary(dep)) 
   }
   # Check the number of items is correct
@@ -64,12 +90,13 @@ extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
   # Compute total score 
   score_var <- paste0(reporter,'DEP_score')
   dep[,score_var] <- ifelse(rowSums(is.na(dep))!=ncol(dep), rowSums(dep, na.rm=TRUE), NA)
-  message('Score:'); print(summary(dep[,score_var]))
   
   # Add age variable (in months) and display its descriptives
   age_var = paste0(reporter,'DEP_age')
-  dep[,age_var]<- suppressWarnings(as.numeric(levels(data[,age]))[data[,age]] / 12)
-  message('\nAge:'); print(summary(dep[,age_var]))
+  dep[,age_var] <- if (!is.numeric(data[,age])) as.numeric(levels(data[,age]))[data[,age]] / 12 else data[,age] / 12
+  
+  # Print summary
+  print(summary(dep[,c(score_var, age_var)]))
   
   # Histogram 
   hist(dep[,score_var], 
@@ -84,8 +111,14 @@ extr_dep <- function(pref, nrs, remove=c(), age, plus=NULL, reporter='s'){
   return(dep)
 }
 
+
 # Compute BMI given height in cm and weight in kg 
 bmi_calc <- function(h, w, title='BMI', age=''){
+  
+  # Clean up a little
+  #h <- winsorize(h, xmin='0.001', xmax='0.999') 
+  #w <- winsorize(w, xmin='0.001', xmax='0.999') 
+  
   h = h/100 # transform to meters
   bmi <- w / h^2
   # print(summary(bmi))
@@ -93,24 +126,8 @@ bmi_calc <- function(h, w, title='BMI', age=''){
   return(bmi)
 }
 
-# Remove outliers
-rm_outliers <- function(var, cutoff = 5, verbose=TRUE) {
-  
-  quants <- quantile(var, probs=c(.25, .75), na.rm=TRUE);
-  iqr <- quants[2]-quants[1]
-  too_high <- which(var > quants[2]+cutoff*iqr)
-  too_low  <- which(var < quants[1]-cutoff*iqr)
-  var[ c(too_high, too_low) ] <- NA
-  if (verbose){
-    # message(names(var))
-    cat(length(too_low)+length(too_high), ' outliers removed (', 
-        length(too_low), ' below and ', length(too_high), ' above the cutoff).\n', sep='')
-  }
-  return(var)
-}
-
 # Extract and clean cardio-metabolic items
-extr_cmr <- function(df, age){
+extr_cmr <- function(df, age, outlier_cutoff=5){
   # identify variables 
   cmr <- as.data.frame(data[, names(df)])
   
@@ -120,10 +137,10 @@ extr_cmr <- function(df, age){
     
     mutate(across(everything(), function(x) { 
       if (!is.numeric(x)) {
-      # Drop empty levels
-      droplevels(x)
-      # Transform to numeric
-      x <- suppressWarnings(as.numeric(levels(x))[x])
+        # Drop empty levels
+        droplevels(x)
+        # Transform to numeric
+        x <- suppressWarnings(as.numeric(levels(x))[x])
       }
       return(x)
     }))
@@ -131,34 +148,36 @@ extr_cmr <- function(df, age){
   # rename them
   names(cmr) <- df
   
-  # Remove outliers
-  except = which(names(cmr) %in% c('insulin','glucose','triglyc','CRP','IL_6','canabis'))
-  if (identical(except, integer(0))) { 
-    cmr <- as.data.frame(sapply(cmr, rm_outliers))
-  } else { 
-    cmr[,-except] = as.data.frame(sapply(cmr[,-except], rm_outliers)) }
-  
-  # cmr[, except] = as.data.frame(sapply(cmr[, except], rm_outliers, cutoff=10))
-  # browser()
+  # Remove outliers (set to NA)
+  # except <- which(names(cmr) %in% c('insulin','glucose','triglyc','CRP','IL_6','canabis'))
+  # if (identical(except, integer(0))) { 
+  #   cmr <- as.data.frame(sapply(cmr, rm_outliers, cutoff = outlier_cutoff))
+  # } else { 
+  #   cmr[,-except] <- as.data.frame(sapply(cmr[,-except], rm_outliers, cutoff = outlier_cutoff)) }
   
   # Add age variable (in months) and display its descriptives
-  cmr[,'CMR_age']<- as.numeric(levels(data[,age]))[data[,age]] / 12
+  cmr[,'CMR_age'] <- if (!is.numeric(data[,age])) as.numeric(levels(data[,age]))[data[,age]] / 12 else data[,age] / 12
   # print(summary(cmr$CMR_age))
   
+  # Transform mass from grams to kg 
+  cmr[, grep('mass', names(cmr))] <- cmr[, grep('mass', names(cmr))] / 1000
+  
   # Compute BMI if all info is available
-  if (length(grep('height|weight', names(cmr))) > 1) {
-    message('Calculating BMI')
-    cmr[,'BMI'] <- bmi_calc(cmr$height, cmr$weight)
-    cmr[,'BMI'] <- rm_outliers(cmr[,'BMI'])
+  if ('height' %in% names(cmr)) {
+    for (to_index in c('weight','total_fatmass','total_leanmass')) {
+      indexed <- if (to_index=='weight') 'BMI' else if (to_index=='total_fatmass') 'FMI' else 'LMI'
+      
+      if (to_index %in% names(cmr)) {
+        message('Calculating ', indexed, '...')
+        
+        cmr[,indexed] <- bmi_calc(cmr[,'height'], cmr[,to_index], 
+                                  title=indexed, 
+                                  age=round(median(cmr[,'CMR_age'], na.rm=TRUE),1))
+      }
+    }
   }
-  # Compute FMI if all info is available
-  if (length(grep('height|total_fatmass', names(cmr))) > 1) {
-    message('calculating FMI, TFI and LMI')
-    new = c('FMI','TFI','LMI'); old = c('total_fatmass','trunk_fatmass','total_leanmass')
-    for (i in 1:3) { cmr[,new[i]] <- bmi_calc(cmr[,'height'], cmr[,old[i]]/1000, 
-        title=new[i], age=round(median(cmr$CMR_age,na.rm=T),1)) }
-    cmr[,new] <- rm_outliers(cmr[,new])
-  }
+  
+  
   # Add age mark to variable 
   names(cmr) <- paste0(names(cmr),'_',round(median(cmr$CMR_age,na.rm=T),1),'y')
   
@@ -169,24 +188,35 @@ extr_cmr <- function(df, age){
 # Extract and combine puberty variables
 extr_pub <- function(age, scale=12){
   
-  pubid = substr(age,1,4)
+  pubid <- substr(age,1,4)
   
-  # identify variables 
-  pub <- data.frame('phys_activity'= data[, paste0(pubid,'09')],
-                    # 'age1st_menar'= data[, paste0(pubid,'11')],
-                    # Breasts and pubic hair
-                    'puberty_stage_f'= rowSums(data[, paste0(pubid,c('30','35'))], na.rm = FALSE),
-                    # Testes, scrotum penis and pubic hair
-                    'puberty_stage_m'= rowSums(data[, paste0(pubid,c('50','55'))], na.rm = FALSE),
-                    
-                    'pub_age' = data[, age]/scale
-                    )
+  pubnames <- names(data)[(grepl(paste0('^',pubid), names(data), ignore.case=TRUE))]
   
-  # Add age mark to variable 
-  names(pub) <- paste0(names(pub),'_',round(median(pub$pub_age,na.rm=TRUE),1),'y')
+  renames <- c(pub_age = age, phys_activity = paste0(pubid,'09'))
   
-  print(summary(pub))
-  return(pub)
+  pubset <- data %>%
+    # Identify variables + add sex for puberty stage
+    select(any_of(c(pubnames, 'kz021'))) %>% 
+    
+    # Recode all columns to numeric 
+    mutate_at(vars(matches('09$|30$|35$|50$|55$')), ~ as.numeric(.)) %>%
+    mutate_at(vars(age), ~ as.numeric(as.character(.))/scale) %>% 
+    
+    # Compute puberty stage for male and female participants and age
+    mutate(puberty_stage = na_if(case_when(
+      kz021 == 'Female' ~ rowSums(select(., matches('30$|35$')), na.rm = TRUE), # Breasts + pubic hair
+      kz021 == 'Male' ~ rowSums(select(., matches('50$|55$')), na.rm = TRUE), # Testes,scrotum penis + pubic hair
+      TRUE ~ NA), 0)) %>% 
+    
+    rename(all_of(renames)) %>%
+    select(pub_age, phys_activity, puberty_stage)
+  
+  # Add age mark to variable
+  names(pubset) <- paste0(names(pubset),'_',
+                          round(median(pubset$pub_age, na.rm=TRUE), 1),'y')
+  
+  print(summary(pubset))
+  return(pubset)
 }
 
 # ---- SMFQ mother-reported (13 items) / self-reported (17-16) -----------------
@@ -205,184 +235,195 @@ extr_pub <- function(age, scale=12){
 # 12	  Thought they would never be as good as other people in the past 2 weeks
 # 13	  Felt they did everything wrong in the past 2 weeks
 
-# ---------------------- Removed from the scoring ------------------------------
-# 2 Had fun; 8 Felt happy; 11 Enjoyed doing lots of things; 17 Had a good time; 18 Laughed a lot; 
-# 19 Looked forward to the day ahead; 20 Felt really positive about the future; 21 Felt valued; 22 Felt unhappy
+# ----- Removed from the scoring -----
+# 2 Had fun; 8 Felt happy; 11 Enjoyed doing lots of things; 17 Had a good time; 
+# 18 Laughed a lot; 19 Looked forward to the day ahead; 20 Felt really positive 
+# about the future; 21 Felt valued; 22 Felt unhappy
 
-# pdf('histogr_data.pdf') # Note: saved in working directory :) 
 # ------------------------------------------------------------------------------
+
+# pdf('histogr_data_EC.pdf') # NOTE: saved in working directory :) 
+sink('./Data_prep_EC_report.txt')
+
+# ALSO : 
+# f7ms010 Height (cm): F7  7.42 years [6.83 - 9.42] f7003c
+# f7ms018 Waist circumference (cm): F7  
+# f7ms020 Hip circumference (cm): F7  
+# f7ms026 Weight (kg): F7 
+# f7dd[...] DIET
+# CHOL_F7 # Cholesterol mmol/l, Focus@7          
+# TRIG_F7 # Triglycerides mmol/l           
+# HDL_F7  # HDL mmol/l            
+# LDL_F7  # LDL mmol/l           
+# Glc_F7  # Glucose (mmol/l)           
+
+cat('\n================================ 8 YEARS =====================================\n')
+
+pub_08.2y <- extr_pub(age='pub194', scale=52) # (only age in weeks available)
+
+# ALSO : kt6400 # Daily alcohol intake (g) from FFQ (8.58 years)
+#        other FFQ diet variables [kt6...]
+#        f8fp[...] # bullying F8 8.58 years
+
+# MISSING : f8lf020-1 # Child height (cm) / weight (kg): lung function: F8
+
+cat('\n================================ 9 YEARS =====================================\n')
+
 mdep_09.6y <- extr_dep('ku6', 60:72, reporter='m', age = 'ku991a') 
 
-# 67  ku673a  DV: SMFQ depression score (complete cases) Quest Child Based
-# 68  ku673b  DV: SMFQ depression score (prorated) Quest Child Based
+# ALSO : SDQ - total scores (ku7...)
+#        ku298 # Child is slapped or hit
+#        ku720 # Child has regular sleeping routine
+#        ku762 # Child had difficulty going to sleep in past year
+#        ku970-1 # Child at present is vegetarian / vegan
 
-# 95  ku705a  DV: SDQ - Prosocial score (complete cases) Quest Child Based
-# 96  ku705b  DV: SDQ - Prosocial score (prorated) Quest Child Based
-# 98  ku706a  DV: SDQ - Hyperactivity score (complete cases) Quest Child Based
-# 99  ku706b  DV: SDQ - Hyperactivity score (prorated) Quest Child Based
-# 101 ku707a  DV: SDQ - Emotional symptoms score (complete cases) Quest Child Based
-# 102 ku707b  DV: SDQ - Emotional symptoms score (prorated) Quest Child Based
-# 104 ku708a  DV: SDQ - Conduct problems score (complete cases) Quest Child Based
-# 105 ku708b  DV: SDQ - Conduct problems score (prorated) Quest Child Based
-# 107 ku709a  DV: SDQ - Peer problems score (complete cases) Quest Child Based
-# 108 ku709b  DV: SDQ - Peer problems score (prorated) Quest Child Based
-# 110 ku710a  DV: SDQ - Total difficulties score (complete cases) Quest Child Based
-# 111 ku710b  DV: SDQ - Total difficulties score (prorated) Quest Child Based
+# MISSING : Sleep - bed/wake time on week/weekends (ku340-3) + sleep quality questions
+#           Child has tried alcohol / cigarettes / drugs (ku430-2)
+#           Age child tried alcohol / cigarettes / drugs (ku435-7) [years]
 
-# 38  ku340a B5a: On school days - time child usually wakes up - hours Quest Child Based
-# 39  ku340b B5a: On school days - time child usually wakes up - minutes Quest Child Based
-# 40  ku341a B5b: On school days - time child usually goes to sleep - hours Quest Child Based
-# 41  ku341b B5b: On school days - time child usually goes to sleep - minutes Quest Child Based
-# 42  ku342a B5c: On weekends - time child usually wakes up - hours Quest Child Based
-# 43  ku342b B5c: On weekends - time child usually wakes up - minutes Quest Child Based
-# 44  ku343a B5d: On weekends - time child usually goes to sleep - hours Quest Child Based
-# 45  ku343b B5d: On weekends - time child usually goes to sleep - minutes Quest Child Based
+pub_09.6y <- extr_pub(age = 'pub295')
 
-# 48   ku430 B17ia: Child has tried alcohol Quest Child Based
-# 49   ku431 B17ib: Child has tried cigarettes Quest Child Based
-# 50   ku432 B17ic: Child has tried drugs Quest Child Based
-# 51   ku435 B17iia: Age child tried alcohol in years Quest Child Based
-# 52   ku436 B17iib: Age child tried cigarettes in years Quest Child Based
-# 53   ku437 B17iic: Age child tried drugs in years Quest Child Based
-
-# tot scores ku673a / ku673b + ku647 (child argues with brothers and sisters)
-# ku298 - B1g: Child is slapped or hit
-# ku34.. sleep
-# alcohol, cigarettes, drugs,
-# SDQ
-
-cmr_09.6y <- extr_cmr(data.frame('pub203'='height'), # cm (parent-reported) # 'pub204'='weight'), # kg (parent-reported)
-                      age = 'pub295')
-
-data[,c('f9_weight1','f9_weight2','f9_waist_circ','f9_hip_circ')] <- sapply(
-  data[,c('f9dx010','f9ms057','f9ms018','f9ms020')], function(x) as.numeric(levels(x))[x] )
-
-# Combine two weight measure (from two DXA visits)
-data[,'f9_weight'] <- rowMeans(data[,c('f9_weight1','f9_weight2')], na.rm=T) ### ONLY DXA f9dx010 in AFAR
-# Calculate waist to hip ratio
-data[,'f9_whr'] <- data[,'f9_waist_circ'] / data[,'f9_hip_circ'] # Hip circumference (cm) ### NOT in AFAR
-
-cmr_09.8y <- extr_cmr(data.frame('f9_weight'='weight', # kg (DXA)
-                                   'f9ms018'='waist_circ', # cm      ### NOT in AFAR
-                                    'f9_whr'='waist_hip_ratio', # cm ### NOT in AFAR
-                                   'f9dx135'='total_fatmass', # grams (--> trasformed later)
-                                   'f9dx136'='total_leanmass',# grams (--> trasformed later) ### NOT in AFAR
-                                   'f9dx126'='trunk_fatmass', # grams (--> trasformed later) ### NOT in AFAR
-                                   'chol_f9'='tot_chol', # mmol/l  ### NOT in AFAR
-                                    'hdl_f9'='HDL_chol', # mmol/l  ### NOT in AFAR
-                                    'ldl_f9'='LDL_chol', # mmol/l  ### NOT in AFAR
-                                'insulin_f9'='insulin',  # mU/L    ### NOT in AFAR
-                                   'trig_f9'='triglyc',  # mmol/l, ### NOT in AFAR
-                                    'crp_f9'='CRP', # mg/L
-                                    'il6_f9'='IL_6'), # Interleukin 6 (pg/ml) ### NOT in AFAR
-                      age = 'f9003c') # f9006c REVISIT? 196 children came twice, mostly 1 month apart
-
-# Add BMI, FMI, TMI and LMI
-add = data.frame('BMI'='weight','FMI'='total_fatmass','TFI'='trunk_fatmass','LMI'='total_leanmass')
-for (v in names(add)) {
-  if (v=='BMI') {div=1} else {div=1000} # weight is already in kg but fat/lean mass is in grams
-  at='_9.8y'
-  # Index to height (m) squared
-  cmr_09.8y[,paste0(v,at)] <- bmi_calc(cmr_09.6y[,'height_9.6y'], cmr_09.8y[,paste0(add[v],at)]/div, title=v, age='~9.7')
-  # Remove outliers
-  cmr_09.8y[,paste0(v,at)] <- rm_outliers(cmr_09.8y[,paste0(v,at)], cutoff = 5)
-}
-# Correct insulin levels 
-cmr_09.8y[,'insulin_9.8y'] <- rm_outliers(cmr_09.8y[,'insulin_9.8y'], cutoff = 10)
-
-summary(cmr_09.8y)
-
-# EXTRA ------------------------------------------------------------------------
-pub_8.2y <- extr_cmr(data.frame('pub109'='phys_act'), 
-                     age='pub194')
-# * Puberty
-#   pub209 = frequency of participation in vigorous physical activity during past month
-#   pub211 = how old was child when she had her first period (but few cases!)
-#   pub230 = development stage of breasts
-#   pub235 = development stage of pubic hair
-#   pub250 = development stage of testes scrotum and penis
-#   pub255 = development stage of pubic hair
-# * Blood samples 
-#   apoai_f9 = Apolipoprotein Al; apob_f9 = Apolipoprotein B mg/dl
-#   hb_f9 = haemoblobin; hba1c_f9 = hemoglobin A1c (HbA1c), amount of blood sugar (glucose) attached to hemoglobin.
-#   igf1_f9 = Insulin-like growth factor 1 (IGF-1)
 # ------------------------------------------------------------------------------
-dep_10.6y <- extr_dep('fddp1', 10:25, remove=c(2,8,11), age = 'fd003c') # Depression score = fddp130 (prorated?)
+to_numeric(c('f9dx010','f9ms057','f9ms018','f9ms020')) # Weight, waist and hip circumference
 
-cmr_10.7y <- extr_cmr(data.frame('pub303'='height',  # cm (parent-reported)
-                                 'pub304'='weight'), # kg (parent-reported)
-                      age = 'pub397a')
+data <- data %>%
+         # Combine two weight measures
+  mutate(f9_weight = rowMeans(.[, c('f9dx010','f9ms057')], na.rm=TRUE), 
+         # Calculate waist to hip ratio
+         f9_WHR = f9ms018 / f9ms020) # Waist / hip circumference (cm)
 
-cmr_10.6y <- extr_cmr(data.frame('fdms018'='waist_circ', # cm
-                                 'fdar117'='SBP',  # Systolic blood pressure (mmHg)
-                                 'fdar118'='DBP',  # Diastolic blood pressure (mmHg)
-                                 'fdar114'='PWV'), # Pulse Wave Velocity (m/s) # radial - carotid!!
+cmr_09.8y <- extr_cmr(data.frame('pub203'='height', # cm; NOTE: age = 9.6 years (pub295)
+                              'f9_weight'='weight', # kg (DXA)
+                                'f9ms018'='waist_circ', # cm
+                                 'f9_WHR'='waist_hip_ratio',
+                                'f9dx135'='total_fatmass',
+                                'f9dx136'='total_leanmass',
+                                'chol_f9'='tot_chol', # Cholesterol mmol/l
+                                 'hdl_f9'='HDL_chol', # HDL mmol/l
+                                 'ldl_f9'='LDL_chol', # LDL mmol/l
+                             'insulin_f9'='insulin', # Insulin mU/L
+                                'trig_f9'='triglyc',  # Triglycerides mmol/l
+                                 'crp_f9'='CRP', # C-Reactive protein mg/l
+                                 'il6_f9'='IL_6'), # Interleukin-6 - NPX values log2 scale
+                      age = 'f9003c')
+
+# ALSO : apoai_f9 = Apolipoprotein Al; apob_f9 = Apolipoprotein B mg/dl
+#        hb_f9 = haemoblobin; hba1c_f9 = hemoglobin A1c (HbA1c), amount of blood sugar (glucose) attached to hemoglobin.
+#        igf1_f9 = Insulin-like growth factor 1 (IGF-1)
+
+# MISSING : BP and pulse (f9sa...)
+#           Parathyroid hormone (pth_f9); Vitamin D (vitd*_f9)
+
+cat('\n================================ 10 YEARS ====================================\n')
+
+dep_10.6y <- extr_dep('fddp1', 10:25, remove=c(2,8,11), age = 'fd003c') 
+
+data <- data %>%
+  # Child drunk alcohol
+  mutate(fd_alcol = case_when(fdaa492 =='No' ~ 0, fdaa492 =='Yes' ~ 1, TRUE ~ NA)) 
+
+cmr_10.6y <- extr_cmr(data.frame('pub303'='height', # cm (parent-reported) AGE = 10.7
+                                 'pub304'='weight', # kg (parent-reported) AGE = 10.7
+                                'fdms018'='waist_circ', # cm
+                                'fdar117'='SBP',  # Systolic blood pressure (mmHg)
+                                'fdar118'='DBP',  # Diastolic blood pressure (mmHg)
+                                'fdar114'='PWV', # Pulse Wave Velocity (m/s) # radial - carotid!!
+                               'fd_alcol'='alcohol'), # child drunk alcohol
                       age = 'fd003c')
-# EXTRA ------------------------------------------------------------------------
-# + alcohol (fdaa492-93) + diet (fddd2-4..)
 
-# MISSING ----------------------------------------------------------------------
-#   fdms010 = Height (cm)
-#   fdms026 = Weight (kg)
-#   fdar111 = Brachial diameter in millimetres
-#   fdar115 = Brachial distensibility coefficient
-#   fdar116 = Brachial artery compliance
-#   FDAA483 = Freq Child smoked cigarettes - FDAA484 = No. cigarettes Child smoked per week
+pub_10.7y <- extr_pub(age = 'pub397a')
 
-# ------------------------------------------------------------------------------
+# ALSO : kv5538 # In past month child has had problems sleeping [10.7 years]
+#        DAWBA - diagnoses (kv8...) [10.7 years]
+#        fdfp[...] # bullying F10 10.58 years
+#        fdaa493 # Freq child drunk alcohol {too few cases}
+#        fddd[...] diet 
+
+# MISSING : fdms010, fdms026 = measured Height (cm) / Weight (kg)
+#           FDAA483 = Freq Child smoked cigarettes - FDAA484 = No. cigarettes Child smoked per week
+#           Child smoked cannabis / Freq / No. times per week (fdaa522-4) [10.6 years] # ONLY 1 CASE
+#           Friends drunk alcohol / freq (fdaa490-1); Alcohol intake g (fddd340) / g/day (fddd275: diet diary)
+
+cat('\n================================ 11 YEARS ====================================\n')
+
 mdep_11.7y <- extr_dep('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
 
-data[,c('fems_waist_circ','fems_hip_circ')] <- sapply(
-  data[,c('fems018','fems020')], function(x) as.numeric(levels(x))[x] )
+to_numeric(c('fems018','fems020'))
 
-# Calculate waist to hip ratio
-data$fems_whr <- data[,'fems_waist_circ'] / data[,'fems_hip_circ']
+data <- data %>%
+        # Calculate waist to hip ratio
+  mutate(fe_WHR = fems018 / fems020) # Waist / hip circumference (cm)
 
 cmr_11.7y <- extr_cmr(data.frame( 'pub403'='height', # cm (parent-reported) # Note: age slightly different ('pub497a')
                                  'fedx016'='weight', # kg --> 'pub404'='weight', # kg (parent-reported)
                                  'fems018'='waist_circ', # cm 
-                                'fems_whr'='waist_hip_ratio', # cm 
-                                 'fedx135'='total_fatmass', # grams (--> trasformed later)
-                                 'fedx136'='total_leanmass',# grams (--> trasformed later)
-                                 'fedx126'='trunk_fatmass'),# grams (--> trasformed later)
+                                  'fe_WHR'='waist_hip_ratio',
+                                 'fedx135'='total_fatmass',
+                                 'fedx136'='total_leanmass'),
                        age = 'fe003c')
 
-# MISSING 
-#   fems010 = Height (cm)
-#   fems026 = Weight (kg)
-#   fems028a = Fat percentage, impedance
+pub_11.7y <- extr_pub(age = 'pub497a')
 
-# ------------------------------------------------------------------------------
+# ALSO : SDQ - scores (kw66...)
+#        Sleep duration > extr_sleep(bedvar='kw4061', wakevar='kw4060', age='kw9991a') # school days
+#        kw4041  # Frequency that child is slapped or hit by mother
+
+# MISSING : fems010 = Height (cm) / fems026 = Weight (kg)
+#           fesa021-3 = SBP, DBP, pulse
+#           fems028a = Fat percentage, impedance
+#           febp191 = Child drunk alcohol
+
+cat('\n================================ 12 YEARS ====================================\n')
+
 dep_12.8y <- extr_dep('ff65', 0:15, remove=c(2,8,11), age = 'ff0011a') # (+ date attendance b)
 
 cmr_12.8y <- extr_cmr(data.frame('ff2000'='height', # cm
                                  'ff2030'='weight', # kg
                                  'ff2020'='waist_circ'), # cm
                       age = 'ff0011a')
-# MISSING 
-# ff2036 = Fat percentage (%)
-# ff2620-27 = BP and pulse measures
-# ------------------------------------------------------------------------------
+# MISSING : ff2620-27 = BP and pulse measures
+#           ff2036 = Fat percentage (%)
+#           ff6610 Teenager has smoked cigarettes
+
+cat('\n================================ 13 YEARS ====================================\n')
+
 mdep_13.1y <- extr_dep('ta50', 20:32, reporter='m', age = 'ta9991a') 
-# + SDQ scores ta7025a - f 
-# + Teenager upset or distressed about weight/body shape (ta6160)
 
 cmr_13.1y <- extr_cmr(data.frame('pub503'='height',  # cm (parent-reported)
                                  'pub504'='weight'), # kg (parent-reported)
                       age = 'pub597a')
 
+pub_13.1y <- extr_pub(age = 'pub597a')
+
+# ALSO : SDQ scores ta7025a - f 
+#        Teenager upset or distressed about weight/body shape (ta6160)
+#        Diet scores (ta8...)
+
+# MISSING : height and weight measures (ta6000-1)
+#           Alcohol (ta828...)
+#           Health - e.g. sleep quality and tired/lacking energy (ta11-12..)
+
 # ------------------------------------------------------------------------------
+
 dep_13.8y <- extr_dep('fg72', 10:25, remove=c(2,8,11), age = 'fg0011a')
 
+to_numeric(c('fg3130','fg3207', # weight
+             paste0('fg10',20:22), paste0('fg61', c(20:22,25:27)), # BP and pulse
+             'fg1550')) # alcohol
+
+data <- data %>%
+  # Teenager has smoked cigarettes
+  mutate(fg_smoke = case_when(fg4822 =='No' ~ 0, fg4822 =='Yes' ~ 1, TRUE ~ NA))
+
 cmr_13.8y <- extr_cmr(data.frame('fg3100'='height',    # cm
-                                 'fg3207'='weight',# kg (DXA)
-                                 'fg3254'='total_fatmass',  # grams (--> trasformed later)
-                                 'fg3255'='total_leanmass', # grams (--> trasformed later)
-                                 'fg3245'='trunk_fatmass',  # grams (--> trasformed later)
-                                 'fg3257'='android_fatmass',# grams (--> trasformed later)
-                                 'fg1020'='heart_rate'), # at rest (BPM)
+                                 'fg3207'='weight', # kg (DXA)
+                                 'fg3254'='total_fatmass',   
+                                 'fg3255'='total_leanmass',  
+                                 'fg3257'='android_fatmass', 
+                                 'fg1020'='heart_rate', # at rest (BPM)
+                                 'fg_smoke'='smoking'),
                       age = 'fg0011a')
-# (+ fg4822-24,29: smoked cigarettes)
+
 # (+ fg4873,77-80, fg4915,17,19: drinking)
 # (+ fg5422-23,26,28-29 cannabis )
 # (+ fg7363 = Factor IV Emotional Stability: Big 5 factor marker: Personality Questionnaire)

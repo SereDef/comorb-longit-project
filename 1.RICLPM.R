@@ -10,10 +10,11 @@ if (length(args) == 0) {
   out_folder <- args[1] # e.g. 'mod1_ri_pstat' # parameters stationary
 }
 
+out_folder = './riclpm_180324'
 # Set parameters
 dir.create(out_folder)
 
-stationarity <- !(grepl('pfree', out_folder)) # model regression coefs as stationary over time 
+# stationarity <- !(grepl('pfree', out_folder)) # model regression coefs as stationary over time 
 
 # The type and scale of time constraints
 time_constraints=c('*','years')
@@ -25,7 +26,7 @@ invisible(lapply(c('lavaan','foreach'), require, character.only = TRUE));
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
-data <- readRDS('./raw_data.rds')
+data <- readRDS('../raw_data.rds')
 
 # ==============================================================================
 # -------------------------- Set-up and functions ------------------------------
@@ -285,9 +286,12 @@ riclpm_formula <- function(var1='dep', var2='cmr',
 }
 
 ## Fit a single SEM model (used in run_all_models)
-run_lavaan <- function(param, group=NULL, transform=TRUE, normalize=TRUE) {
+run_lavaan <- function(param, stationarity=FALSE,
+                       group=NULL, 
+                       transform=TRUE, normalize=TRUE, verbose=TRUE) {
   
-  if (!is.null(group)) { subset = paste0('_',group) } else { subset = '' }
+  if (!is.null(group)) { subset = paste0('_by_',group) 
+  } else if (stationarity) { subset = '_pstat' } else { subset = '' }
   
   cat('\n------------------------------------------------------\n', 
       param[[1]],' ~ ',param[[3]], '   ', subset,
@@ -304,7 +308,6 @@ run_lavaan <- function(param, group=NULL, transform=TRUE, normalize=TRUE) {
   print(times)
   
   group_levels <- levels(dc$sample[,group])
-  print(group_levels)
   
   set.seed(310896)
   
@@ -312,7 +315,7 @@ run_lavaan <- function(param, group=NULL, transform=TRUE, normalize=TRUE) {
   # Run model
   m <- lavaan::lavaan(riclpm_formula(meas_time = times, 
                                      rel=time_constraints[1],
-                                     stationarity = stationarity,
+                                     stationarity=stationarity,
                                      strata=group_levels,
                                      verbose=verbose),
                       data = dc$sample, 
@@ -331,8 +334,10 @@ run_lavaan <- function(param, group=NULL, transform=TRUE, normalize=TRUE) {
     # Return warning message ( overwrites the model object )
     m <- paste(gsub('lavaan WARNING:', '', names(warnings())), collapse='\n')
     cat(m,'\n')
+    
   } else {
-    print(summary(m))
+    
+    if (verbose) print(summary(m))
     
     # Fit measures
     fit_measures <- as.data.frame(lavaan::fitmeasures(m))
@@ -428,18 +433,29 @@ models <- list(
        'waist_circ', c(9.8, 11.8, 12.8, 15.4))
 )
 
+
 # Run each depression / CMR marker combination in parallel =====================
 foreach(i=1:length(models)) %dopar% {
   
   params = models[[i]]
   
-  mtot = run_lavaan(param=params)
+  mtot = run_lavaan(param=params, stationarity=FALSE)
   
+  # Test stationary assumption
+  msta = run_lavaan(param=params, stationarity=TRUE)
   # Stratify by sex
-  if (!stationarity) { 
-    msex = run_lavaan(param=params, group='sex') 
-    lavTestLRT(mtot, msex)
-  }
+  msex = run_lavaan(param=params, stationarity=FALSE, group='sex') 
+  
+  
+  sink(paste0(out_folder,'/',substr(params[[1]],1,4),'_',params[[3]],'_tests.txt'))
+  cat('\n------------------------------------------------------\n', 
+      params[[1]],' ~ ',params[[3]],
+      '\n------------------------------------------------------\nSTATIONARITY\n')
+  print(lavTestLRT(mtot, msta))
+  cat('\n------------------------------------------------------\nSEX STRATA\n')
+  print(lavTestLRT(mtot, msex))
+  sink()
+  
 }
 
 # ==============================================================================
