@@ -40,3 +40,12 @@ Python application (see also requirements.txt):
 | dash_cytoscape            | 0.3.0   |
 | plotly                    | 5.16.1  |
 | pyreadr                   | 0.4.9   |
+
+## Running the application locally
+It may be faster play around with the application on your local machine. To run the application locally (assuming a UNIX system with Python 3 installed):
+
+git clone https://github.com/SereDef/comorb-longit-project
+cd src
+pip3 install -r requirements.txt
+
+python3 app.py
