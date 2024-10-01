@@ -46,7 +46,8 @@ It may be faster play around with the application on your local machine. To run 
 
 ```
 git clone https://github.com/SereDef/comorb-longit-project
-pip install -r requirements.txt
+cd comorb-longit-project
 
+pip install -r requirements.txt
 python3 src/app.py
 ```
