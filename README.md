@@ -44,8 +44,9 @@ Python application (see also requirements.txt):
 ## Running the application locally
 It may be faster play around with the application on your local machine. To run the application locally (assuming a UNIX system with Python 3 installed):
 
+```
 git clone https://github.com/SereDef/comorb-longit-project
-cd src
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 
-python3 app.py
+python3 src/app.py
+```
