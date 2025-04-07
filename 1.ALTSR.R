@@ -8,6 +8,7 @@ if (length(args) == 0) {
   stop("Supply output folder name!")
 } else {
   out_folder <- args[1]
+  inp_fodler <- args[2]
 }
 
 # Set parameters
@@ -16,14 +17,14 @@ dir.create(out_folder)
 # The type and scale of time constraints
 time_constraints=c('*','years')
 # Speak or quite
-verbose=FALSE
+verbose=TRUE
 
 # Load dependencies
-invisible(lapply(c('lavaan','foreach'), require, character.only = TRUE));
+invisible(lapply(c('lavaan','foreach','doParallel'), require, character.only = TRUE));
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
-data <- readRDS('../raw_data.rds')
+data <- readRDS(inp_fodler)
 
 # ==============================================================================
 # -------------------------- Set-up and functions ------------------------------
@@ -471,6 +472,11 @@ models <- list(
 
 
 # Run each depression / CMR marker combination in parallel =====================
+library(doParallel)
+n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = 1))
+cl <- makeCluster(n_cores)
+registerDoParallel(cl)
+
 foreach(i=1:length(models)) %dopar% {
   
   params = models[[i]]
