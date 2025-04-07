@@ -255,7 +255,9 @@ sink('./Data_prep_EC_report.txt')
 # TRIG_F7 # Triglycerides mmol/l           
 # HDL_F7  # HDL mmol/l            
 # LDL_F7  # LDL mmol/l           
-# Glc_F7  # Glucose (mmol/l)           
+# Glc_F7  # Glucose (mmol/l)  
+
+# kq sleep, SDQ, diet
 
 cat('\n================================ 8 YEARS =====================================\n')
 
@@ -347,6 +349,8 @@ pub_10.7y <- extr_pub(age = 'pub397a')
 cat('\n================================ 11 YEARS ====================================\n')
 
 mdep_11.7y <- extr_dep('kw60', 0:12, reporter='m', age = 'kw9991a') # tot scores kw6100a / kw6100b  + SDQ scores kw6600 - kw6605
+
+# SLEEP AND DRUGS 
 
 to_numeric(c('fems018','fems020'))
 

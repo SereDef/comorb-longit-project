@@ -1,0 +1,24 @@
+
+------------------------------------------------------
+ sDEP_score  ~  LMI 
+------------------------------------------------------
+STATIONARITY
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC    Chisq Chisq diff   RMSEA Df diff Pr(>Chisq)    
+mtot 37 -80695 -80325   924.07                                          
+msta 53 -70114 -69856 11536.49      10612 0.28828      16  < 2.2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+------------------------------------------------------
+SEX STRATA
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC  Chisq Chisq diff     RMSEA Df diff Pr(>Chisq)   
+mtot 37 -80695 -80325 924.07                                           
+msex 74 -88242 -87502 989.46      65.39 0.0098124      37   0.002725 **
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1

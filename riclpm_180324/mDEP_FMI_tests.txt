@@ -1,0 +1,24 @@
+
+------------------------------------------------------
+ mDEP_score  ~  FMI 
+------------------------------------------------------
+STATIONARITY
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC   Chisq Chisq diff   RMSEA Df diff Pr(>Chisq)    
+mtot  9 -37840 -37600  97.708                                          
+msta 17 -37072 -36886 882.329     784.62 0.11643       8  < 2.2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+------------------------------------------------------
+SEX STRATA
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC   Chisq Chisq diff    RMSEA Df diff Pr(>Chisq)    
+mtot  9 -37840 -37600  97.708                                           
+msex 18 -41192 -40711 177.215     79.507 0.033076       9  2.025e-13 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1

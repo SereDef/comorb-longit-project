@@ -1,0 +1,22 @@
+
+------------------------------------------------------
+ sDEP_score  ~  insulin 
+------------------------------------------------------
+STATIONARITY
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC  Chisq Chisq diff    RMSEA Df diff Pr(>Chisq)    
+mtot  9 -25070 -24831 101.95                                           
+msta 17 -24973 -24789 214.51     112.56 0.044039       8  < 2.2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+------------------------------------------------------
+SEX STRATA
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC  Chisq Chisq diff RMSEA Df diff Pr(>Chisq)
+mtot  9 -25070 -24831 101.95                                    
+msex 18 -25552 -25075  94.69    -7.2553     0       9          1

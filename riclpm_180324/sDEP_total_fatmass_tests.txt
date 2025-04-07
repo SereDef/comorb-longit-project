@@ -1,0 +1,24 @@
+
+------------------------------------------------------
+ sDEP_score  ~  total_fatmass 
+------------------------------------------------------
+STATIONARITY
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC   Chisq Chisq diff  RMSEA Df diff Pr(>Chisq)    
+mtot 37 -78481 -78107  397.15                                         
+msta 53 -76875 -76613 2035.93     1638.8 0.1087      16  < 2.2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+------------------------------------------------------
+SEX STRATA
+
+Chi-Squared Difference Test
+
+     Df    AIC    BIC  Chisq Chisq diff    RMSEA Df diff Pr(>Chisq)    
+mtot 37 -78481 -78107 397.15                                           
+msex 74 -83223 -82475 568.29     171.13 0.020552      37  < 2.2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
