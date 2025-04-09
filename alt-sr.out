@@ -1,0 +1,236 @@
+/var/spool/slurmd/job04051/slurm_script: line 12: module: command not found
+Warning message:
+In dir.create(out_folder) : '../alt_sr_results' already exists
+Loading required package: lavaan
+This is lavaan 0.6-19
+lavaan is FREE software! Please report any bugs.
+Loading required package: foreach
+Loading required package: doParallel
+Loading required package: iterators
+Loading required package: parallel
+[[1]]
+lavaan 0.6-19 ended normally after 394 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        60
+
+  Number of observations                          7970
+  Number of missing patterns                       963
+
+Model Test User Model:
+                                                      
+  Test statistic                               175.739
+  Degrees of freedom                                30
+  P-value (Chi-square)                           0.000
+
+[[2]]
+[1] ""
+
+[[3]]
+lavaan 0.6-19 ended normally after 307 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        60
+
+  Number of observations                          7969
+  Number of missing patterns                       963
+
+Model Test User Model:
+                                                      
+  Test statistic                               432.354
+  Degrees of freedom                                30
+  P-value (Chi-square)                           0.000
+
+[[4]]
+[1] ""
+
+[[5]]
+lavaan 0.6-19 ended normally after 295 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        60
+
+  Number of observations                          8583
+  Number of missing patterns                       946
+
+Model Test User Model:
+                                                      
+  Test statistic                              2614.448
+  Degrees of freedom                                30
+  P-value (Chi-square)                           0.000
+
+[[6]]
+lavaan 0.6-19 ended normally after 246 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          8427
+  Number of missing patterns                       128
+
+Model Test User Model:
+                                                      
+  Test statistic                                10.915
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.004
+
+[[7]]
+lavaan 0.6-19 ended normally after 474 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          6810
+  Number of missing patterns                       177
+
+Model Test User Model:
+                                                      
+  Test statistic                                 5.331
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.070
+
+[[8]]
+lavaan 0.6-19 ended normally after 1726 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          6757
+  Number of missing patterns                       208
+
+Model Test User Model:
+                                                      
+  Test statistic                                 1.229
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.541
+
+[[9]]
+[1] ""
+
+[[10]]
+[1] ""
+
+[[11]]
+lavaan 0.6-19 ended normally after 439 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          6739
+  Number of missing patterns                       208
+
+Model Test User Model:
+                                                      
+  Test statistic                                 0.713
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.700
+
+[[12]]
+lavaan 0.6-19 ended normally after 459 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          6758
+  Number of missing patterns                       208
+
+Model Test User Model:
+                                                      
+  Test statistic                                 6.669
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.036
+
+[[13]]
+lavaan 0.6-19 ended normally after 368 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          6723
+  Number of missing patterns                       209
+
+Model Test User Model:
+                                                      
+  Test statistic                                 2.219
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.330
+
+[[14]]
+lavaan 0.6-19 ended normally after 303 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          7161
+  Number of missing patterns                       177
+
+Model Test User Model:
+                                                      
+  Test statistic                                 1.036
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.596
+
+[[15]]
+lavaan 0.6-19 ended normally after 513 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          7553
+  Number of missing patterns                       167
+
+Model Test User Model:
+                                                      
+  Test statistic                                11.704
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.003
+
+[[16]]
+[1] ""
+
+[[17]]
+lavaan 0.6-19 ended normally after 3262 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          7834
+  Number of missing patterns                       217
+
+Model Test User Model:
+                                                      
+  Test statistic                                 7.175
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.028
+
+[[18]]
+[1] ""
+
+[[19]]
+lavaan 0.6-19 ended normally after 357 iterations
+
+  Estimator                                         ML
+  Optimization method                           NLMINB
+  Number of model parameters                        42
+
+  Number of observations                          7876
+  Number of missing patterns                       214
+
+Model Test User Model:
+                                                      
+  Test statistic                                 1.010
+  Degrees of freedom                                 2
+  P-value (Chi-square)                           0.604
+

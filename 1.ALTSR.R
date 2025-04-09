@@ -8,7 +8,7 @@ if (length(args) == 0) {
   stop("Supply output folder name!")
 } else {
   out_folder <- args[1]
-  inp_fodler <- args[2]
+  inp_folder <- args[2]
 }
 
 # Set parameters
@@ -24,7 +24,7 @@ invisible(lapply(c('lavaan','foreach','doParallel'), require, character.only = T
 # Note: I also tried parallel and pbapply for parallel processing but foreach worked best
 
 # Read in data
-data <- readRDS(inp_fodler)
+data <- readRDS(inp_folder)
 
 # ==============================================================================
 # -------------------------- Set-up and functions ------------------------------
@@ -224,7 +224,7 @@ altsr_formula <- function(var1='dep', var2='cmr',
                         'rs_',var1,' ~~ covRI_',var2,'_RS_',var1,' * ri_',var2,'\n')
   
   # Set variances of within-components at first wave to 1 in standardized model
-  if (stationarity) { w1 = '1*' } else { w1 = 'rvar1*' }
+  if (stationarity) { w1 = '1*' } else { w1 = '' }
   
   # Estimate (residual) variances of within-person centered variables and RIs
   rvars1 <- sapply(2:n_ocs, function(i) ename('rvar', var1, i, strata=strata))
@@ -239,9 +239,7 @@ altsr_formula <- function(var1='dep', var2='cmr',
                      # Estimate variance of random intercepts
                      'ri_',var1,' ~~ RIvar_',var1,'*ri_',var1,'\nri_',var2,' ~~ RIvar_',var2,'*ri_',var2, '\n',
                      # Estimate variance of random slopes
-                     'rs_',var1,' ~~ RSvar_',var1,'*rs_',var1,'\nrs_',var2,' ~~ RSvar_',var2,'*rs_',var2, '\n',
-                     
-                     )
+                     'rs_',var1,' ~~ RSvar_',var1,'*rs_',var1,'\nrs_',var2,' ~~ RSvar_',var2,'*rs_',var2, '\n')
   
   # Finally impose constraints -------------------------------------------------
   
@@ -251,15 +249,15 @@ altsr_formula <- function(var1='dep', var2='cmr',
                        paste0(var2,1:n_ocs,' ~~ 0 * ', var2,1:n_ocs, collapse='\n'),'\n',
                        
                        # Set covariance between RIs and RSs and the first impulses to 0
-                       'w_',var1,'1 ~~ 0 * RI_',var1,'\n',
-                       'w_',var1,'1 ~~ 0 * RS_',var1,'\n',
-                       'w_',var1,'1 ~~ 0 * RI_',var2,'\n',
-                       'w_',var1,'1 ~~ 0 * RS_',var2,'\n',
+                       'w_',var1,'1 ~~ 0 * ri_',var1,'\n',
+                       'w_',var1,'1 ~~ 0 * rs_',var1,'\n',
+                       'w_',var1,'1 ~~ 0 * ri_',var2,'\n',
+                       'w_',var1,'1 ~~ 0 * rs_',var2,'\n',
                        
-                       'w_',var2,'1 ~~ 0 * RI_',var1,'\n',
-                       'w_',var2,'1 ~~ 0 * RS_',var1,'\n',
-                       'w_',var2,'1 ~~ 0 * RI_',var2,'\n',
-                       'w_',var2,'1 ~~ 0 * RS_',var2,'\n')
+                       'w_',var2,'1 ~~ 0 * ri_',var1,'\n',
+                       'w_',var2,'1 ~~ 0 * rs_',var1,'\n',
+                       'w_',var2,'1 ~~ 0 * ri_',var2,'\n',
+                       'w_',var2,'1 ~~ 0 * rs_',var2,'\n')
   
   if (stationarity) { # Do not constrain if the models are stratified
     
@@ -311,7 +309,7 @@ altsr_formula <- function(var1='dep', var2='cmr',
   }
 
   # Paste everything together 
-  f = paste0(random_intercepts, impulses, regressions, covariances, variances, 
+  f = paste0(random_intercepts, random_slopes, impulses, regressions, covariances, variances, 
              constraints)
   
   if (verbose) { message('MODEL SYNTAX:'); cat(f) }
@@ -474,6 +472,7 @@ models <- list(
 # Run each depression / CMR marker combination in parallel =====================
 library(doParallel)
 n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = 1))
+#print(n_cores)
 cl <- makeCluster(n_cores)
 registerDoParallel(cl)
 
